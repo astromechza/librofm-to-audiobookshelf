@@ -24,8 +24,14 @@ Status: **investigation / planning** — no production code yet.
 | [03-architecture-decisions.md](03-architecture-decisions.md) | ADR-style record of the choices above and their consequences. |
 | [04-implementation-plan.md](04-implementation-plan.md) | Phased plan, Go module layout, dependencies, open questions. |
 | [05-probe-scripts.md](05-probe-scripts.md)           | How to use `scripts/probe-*.sh` to validate every assumption before writing Go. |
+| [06-code-quality-ci.md](06-code-quality-ci.md)       | Formatting, linting, static analysis, tests, Docker, GoReleaser, GitHub Actions. |
 | [../api/audiobookshelf.openapi.yaml](../api/audiobookshelf.openapi.yaml) | OpenAPI 3.1 spec for the ABS subset we use — source of truth for the generated client (see ADR-009). |
 | [../api/oapi-codegen.yaml](../api/oapi-codegen.yaml) | Generator config for `oapi-codegen`. |
+| [../.golangci.yml](../.golangci.yml)                 | Active golangci-lint configuration.                                              |
+| [../.goreleaser.yaml](../.goreleaser.yaml)           | GoReleaser configuration for binary + Docker releases.                          |
+| [../Dockerfile](../Dockerfile)                       | Multi-stage build → distroless/static + nonroot.                                |
+| [../Makefile](../Makefile)                           | `make ci` runs the same checks GitHub Actions runs.                              |
+| [../.github/workflows/](../.github/workflows/)       | `ci.yml` (PR/main) and `release.yml` (tag).                                     |
 
 ## Source material
 

@@ -1,0 +1,152 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.23"
+  GOLANGCI_LINT_VERSION: "v1.61.0"
+  GOVULNCHECK_VERSION: "v1.1.3"
+
+jobs:
+
+  # Always-on jobs — give the repo immediate value even before Go code lands.
+
+  shellcheck:
+    name: shellcheck (probe scripts)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
+          severity: warning
+
+  openapi-lint:
+    name: lint OpenAPI spec
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: redocly lint
+        run: npx --yes @redocly/cli@latest lint api/audiobookshelf.openapi.yaml
+
+  # Go jobs — skipped cleanly until go.mod exists.
+
+  detect-go:
+    name: detect Go module
+    runs-on: ubuntu-latest
+    outputs:
+      has_go: ${{ steps.check.outputs.has_go }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        run: |
+          if [ -f go.mod ]; then
+            echo "has_go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_go=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: go build
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go build ./...
+
+  test:
+    name: go test (race + coverage)
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go test -race -coverprofile=cover.out -covermode=atomic ./...
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+
+  lint:
+    name: golangci-lint
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+  vuln:
+    name: govulncheck
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+      - run: govulncheck ./...
+
+  generate-drift:
+    name: generate-drift check
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go generate ./...
+      - name: fail on diff
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::generated files are out of date — run 'make generate' and commit."
+            exit 1
+          fi
+
+  docker-smoke:
+    name: docker build smoke (multi-arch, no push)
+    needs: detect-go
+    if: needs.detect-go.outputs.has_go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

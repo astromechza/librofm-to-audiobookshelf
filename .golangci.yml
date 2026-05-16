@@ -1,0 +1,88 @@
+# golangci-lint configuration.
+# Docs: https://golangci-lint.run/usage/configuration/
+#
+# Run locally:    make lint
+# Run in CI:      .github/workflows/ci.yml (go-lint job)
+
+run:
+  timeout: 5m
+  go: "1.23"
+  tests: true
+  modules-download-mode: readonly
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-dirs:
+    - internal/abs              # generated code lives at internal/abs/gen.go
+  exclude-rules:
+    - path: _test\.go
+      linters: [gosec, errcheck]   # test code allowed to skip error checks and weak-rng warnings
+    - path: internal/abs/gen\.go
+      linters: [revive, errcheck, gosec, staticcheck, unused, gofumpt, goimports]
+
+linters:
+  disable-all: true
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - gofumpt
+    - goimports
+    - gosec
+    - bodyclose
+    - noctx
+    - errorlint
+    - revive
+    - nolintlint
+    - misspell
+    - unconvert
+    - prealloc
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  gofumpt:
+    extra-rules: true
+
+  goimports:
+    local-prefixes: github.com/astromechza/librofm-to-audiobookshelf
+
+  gosec:
+    excludes:
+      - G104   # subsumed by errcheck above
+      - G304   # file inclusion via variable — we open user-specified paths intentionally
+    config:
+      G101:
+        pattern: "(?i)(token|secret|password|key|bearer)"   # extra-strict secret detection
+
+  revive:
+    severity: warning
+    rules:
+      - name: exported               # require doc comments on exported identifiers
+      - name: package-comments
+      - name: var-naming
+      - name: context-as-argument
+      - name: error-return
+      - name: error-naming
+      - name: error-strings
+      - name: receiver-naming
+      - name: time-naming
+      - name: unused-parameter
+        severity: warning
+        disabled: true               # noisy in HTTP handler / cobra cmd signatures
+
+  nolintlint:
+    require-explanation: true
+    require-specific: true
+    allow-unused: false
+
+  misspell:
+    locale: US
+
+  staticcheck:
+    checks: ["all"]

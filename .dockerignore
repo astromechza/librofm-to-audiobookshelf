@@ -1,0 +1,13 @@
+.git
+.github
+.golangci.yml
+.goreleaser.yaml
+Dockerfile
+docs
+scripts
+*.md
+LICENSE
+bin
+dist
+cover.out
+*.test

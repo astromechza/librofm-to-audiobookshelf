@@ -1,0 +1,144 @@
+# GoReleaser config.
+# Docs: https://goreleaser.com/customization/
+#
+# Local dry-run (no push, no tag needed):
+#   goreleaser release --snapshot --clean
+#
+# Real release (tag must exist locally):
+#   git tag v0.1.0 && git push --tags    # this triggers .github/workflows/release.yml
+
+version: 2
+
+project_name: librofm-sync
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - id: librofm-sync
+    main: ./cmd/librofm-sync
+    binary: librofm-sync
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X main.version={{ .Version }}
+      - -X main.commit={{ .Commit }}
+      - -X main.date={{ .Date }}
+    goos: [linux, darwin]
+    goarch: [amd64, arm64, arm]
+    goarm: ["7"]
+    ignore:
+      - goos: darwin
+        goarch: arm
+
+archives:
+  - id: default
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
+    formats: [tar.gz]
+    files:
+      - LICENSE
+      - README.md
+      - docs/*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: "^.*feat[(\\w)]*:+.*$"
+      order: 0
+    - title: Bug fixes
+      regexp: "^.*fix[(\\w)]*:+.*$"
+      order: 1
+    - title: Other
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^build:"
+      - "Merge pull request"
+
+dockers:
+  - id: amd64
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
+    use: buildx
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/astromechza/librofm-to-audiobookshelf"
+
+  - id: arm64
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
+    use: buildx
+    dockerfile: Dockerfile
+    goarch: arm64
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/astromechza/librofm-to-audiobookshelf"
+
+docker_manifests:
+  - name_template: "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/astromechza/librofm-to-audiobookshelf:v{{ .Major }}"
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/astromechza/librofm-to-audiobookshelf:v{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/astromechza/librofm-to-audiobookshelf:latest"
+    image_templates:
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
+      - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
+
+sboms:
+  - artifacts: archive
+
+release:
+  github:
+    owner: astromechza
+    name: librofm-to-audiobookshelf
+  prerelease: auto
+  draft: false
+  mode: replace
+
+# Future opt-in: keyless signing.
+# signs:
+#   - cmd: cosign
+#     env: ["COSIGN_EXPERIMENTAL=1"]
+#     signature: "${artifact}.sig"
+#     args: ["sign-blob", "--yes", "--output-signature=${signature}", "${artifact}"]
+#     artifacts: checksum
+# docker_signs:
+#   - cmd: cosign
+#     env: ["COSIGN_EXPERIMENTAL=1"]
+#     args: ["sign", "--yes", "${artifact}"]
+#     artifacts: manifests
