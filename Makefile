@@ -1,6 +1,14 @@
 # Pinned tool versions — bump in lockstep with .github/workflows/*.yml.
+#
+# Note: gofumpt, goimports, staticcheck, govet, errcheck, gosec, revive,
+# misspell etc. are all bundled inside golangci-lint. We install it once
+# and that single binary covers formatting AND linting (`--fix` rewrites).
+#
+# Separately installed:
+#   govulncheck   — CVE scanner, not a style/correctness analyzer
+#   oapi-codegen  — code generator
+#   goreleaser    — release packager
 GOLANGCI_LINT_VERSION ?= v1.61.0
-GOFUMPT_VERSION       ?= v0.7.0
 GOVULNCHECK_VERSION   ?= v1.1.3
 OAPI_CODEGEN_VERSION  ?= v2.4.1
 GORELEASER_VERSION    ?= v2.3.2
@@ -16,7 +24,6 @@ help:
 .PHONY: tools
 tools: ## install pinned dev tools into $GOBIN
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION)
 	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
 	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
@@ -33,23 +40,21 @@ generate-check: generate ## fail if generated code is out of date
 	  || (echo "ERROR: generated code is stale; run 'make generate' and commit." && exit 1)
 
 # ---- formatting & linting ------------------------------------------------
+#
+# golangci-lint bundles gofumpt, goimports, staticcheck, govet, errcheck,
+# gosec, revive, misspell etc. `--fix` rewrites formatting/imports;
+# without it, the linter just reports.
 
 .PHONY: fmt
-fmt: ## rewrite files with gofumpt + goimports
-	$(GOBIN)/gofumpt -w .
-	go run golang.org/x/tools/cmd/goimports@latest -w -local github.com/astromechza/librofm-to-audiobookshelf .
-
-.PHONY: fmt-check
-fmt-check: ## fail if files need formatting
-	@diff=$$($(GOBIN)/gofumpt -d .); \
-	 if [ -n "$$diff" ]; then echo "$$diff"; echo "ERROR: run 'make fmt'." && exit 1; fi
+fmt: ## rewrite files via golangci-lint --fix (gofumpt + goimports + others)
+	$(GOBIN)/golangci-lint run --fix ./...
 
 .PHONY: lint
-lint: ## run golangci-lint
+lint: ## run all golangci-lint checks (no rewriting; fails on style or correctness)
 	$(GOBIN)/golangci-lint run ./...
 
 .PHONY: vuln
-vuln: ## run govulncheck
+vuln: ## run govulncheck (separate tool — CVE scanning, not lint)
 	$(GOBIN)/govulncheck ./...
 
 # ---- tests & build -------------------------------------------------------
@@ -76,4 +81,5 @@ snapshot: ## local GoReleaser dry-run
 # ---- aggregate -----------------------------------------------------------
 
 .PHONY: ci
-ci: generate-check fmt-check lint test vuln ## pre-push gate; runs all CI checks locally
+ci: generate-check lint test vuln ## pre-push gate; runs all CI checks locally
+

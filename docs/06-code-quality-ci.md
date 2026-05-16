@@ -8,21 +8,43 @@ User-confirmed choices:
 | Container registry | **GHCR only** — `ghcr.io/astromechza/librofm-to-audiobookshelf`           |
 | Dep updates        | **Manual** — `go get -u ./... && go mod tidy` on demand, no bot          |
 
-## Formatting
+## One tool, many analyzers: golangci-lint
 
-| Tool      | What it enforces                                            | When it runs                                    |
-| --------- | ----------------------------------------------------------- | ----------------------------------------------- |
-| `gofmt`   | Canonical Go formatting (whitespace, blocks)                | `make fmt`; CI fails on diff                    |
-| `goimports` | Same as `gofmt` plus sorted/grouped imports                | Bundled into `gofumpt` via golangci-lint        |
-| `gofumpt` | Slightly stricter than `gofmt` (consistent var-decl style)  | Via `golangci-lint`                             |
+`golangci-lint` is **not a wrapper that shells out to separate
+binaries** — it vendors the analyzers themselves and runs them all
+in-process against a single parse of each file. Installing
+`golangci-lint` gives us, in one binary:
 
-Generated files (`internal/abs/gen.go`) are exempt — that's
-oapi-codegen's output and we don't hand-format it.
+| Bundled inside golangci-lint | Role             |
+| ---------------------------- | ---------------- |
+| `gofmt`, `goimports`, `gofumpt` | formatting     |
+| `govet`, `staticcheck`       | bug-finders (stdlib + Honnef) |
+| `errcheck`, `ineffassign`, `unused` | correctness |
+| `gosec`                      | security         |
+| `bodyclose`, `noctx`         | HTTP hygiene     |
+| `errorlint`, `revive`, `nolintlint` | style       |
+| `misspell`, `unconvert`, `prealloc` | other      |
 
-## Linting & static analysis
+Adding `--fix` makes it rewrite files in place — same as
+`gofumpt -w` + `goimports -w` combined. So we don't install or
+invoke those tools separately; `make fmt` is one `golangci-lint run --fix`.
 
-One meta-tool: **`golangci-lint`**, pinned via Makefile. Config in
-`.golangci.yml` at the repo root. Enabled linters:
+Generated files (`internal/abs/gen.go`) are exempt via
+`issues.exclude-dirs` — oapi-codegen output, not ours to format.
+
+### What is *not* in golangci-lint (and stays as separate jobs/installs)
+
+| Tool          | Why it's separate                                          |
+| ------------- | ---------------------------------------------------------- |
+| `govulncheck` | Different mechanism: vulnerability DB lookup, not analyzer |
+| `oapi-codegen`| Code generator, not a linter                               |
+| `goreleaser`  | Packaging, not a linter                                    |
+| `shellcheck`  | Not Go                                                     |
+| `redocly`     | Not Go (OpenAPI linting)                                   |
+
+## Enabled linters (golangci-lint)
+
+Config in `.golangci.yml` at the repo root.
 
 | Linter       | Why                                                             |
 | ------------ | --------------------------------------------------------------- |
@@ -147,20 +169,22 @@ Required repository settings (one-time, manual):
 
 Convenience for local dev — every CI step has a `make` equivalent:
 
-| Target           | Action                                                      |
-| ---------------- | ----------------------------------------------------------- |
-| `make generate`  | `go generate ./...`                                         |
-| `make fmt`       | `gofumpt -w . && goimports -w .`                            |
-| `make lint`      | `golangci-lint run ./...`                                   |
-| `make test`      | `go test -race -coverprofile=cover.out ./...`               |
-| `make vuln`      | `govulncheck ./...`                                         |
+| Target           | Action                                                            |
+| ---------------- | ----------------------------------------------------------------- |
+| `make tools`     | `go install` the four dev tools (golangci-lint, govulncheck, oapi-codegen, goreleaser) |
+| `make generate`  | `go generate ./...`                                               |
+| `make fmt`       | `golangci-lint run --fix` — rewrites formatting + imports in place |
+| `make lint`      | `golangci-lint run` — read-only; fails on style or correctness     |
+| `make test`      | `go test -race -coverprofile=cover.out ./...`                     |
+| `make vuln`      | `govulncheck ./...`                                               |
 | `make build`     | `go build -trimpath -ldflags '-s -w' -o bin/librofm-sync ./cmd/librofm-sync` |
-| `make docker`    | `docker buildx build --platform linux/amd64,linux/arm64 .`   |
-| `make snapshot`  | `goreleaser release --snapshot --clean`                     |
-| `make ci`        | runs `fmt-check lint test vuln` — pre-push gate              |
-| `make tools`     | `go install` the dev tools listed in `tools/tools.go`        |
+| `make docker`    | `docker buildx build --platform linux/amd64,linux/arm64 .`         |
+| `make snapshot`  | `goreleaser release --snapshot --clean`                           |
+| `make ci`        | `generate-check lint test vuln` — pre-push gate                    |
 
-`make fmt-check` fails on diff (used by CI); `make fmt` rewrites in place.
+Note: `make lint` already catches formatting drift because `gofumpt`
+and `goimports` are inside golangci-lint. No separate `fmt-check`
+target is needed.
 
 ## Pre-commit hooks
 
