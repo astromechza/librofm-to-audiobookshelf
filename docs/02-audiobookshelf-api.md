@@ -2,22 +2,68 @@
 
 ## Authentication
 
-ABS accepts `Authorization: Bearer <token>` on all `/api/*` routes.
-The token can be either:
+**Mechanism:** a long-lived **API key** sent as `Authorization: Bearer <token>`
+on every `/api/*` request. No login dance, no token refresh, no cookies.
 
-- a short-lived **user JWT** (issued via `/login`), or
-- a **long-lived API key** created in the ABS UI: *Settings → Users → (user) → API Tokens*.
+### How the user provisions the token
 
-Both flow through the same `passport-jwt` strategy
-(`server/Auth.js`): `jwtFromRequest` extracts from
-`Authorization: Bearer ...` or the `?token=` query string, and
-expiration is enforced manually so that API keys (which are stored as
-JWTs with `exp: null`) keep working.
+In the ABS web UI: *Settings → Users → (your user) → API Tokens → Create*.
+ABS stores it as a JWT with `exp: null`, and the same `passport-jwt` strategy
+that accepts session JWTs accepts these — `server/Auth.js` uses
+`ignoreExpiration: true` and validates manually via
+`tokenManager.jwtAuthCheck` so API keys can be revoked but never auto-expire.
+Session JWTs and API keys go through the **same** Bearer header.
 
-**This project uses an API key.** Generate it once, store it in an
-env var (`ABS_API_TOKEN`), never check it in.
+`jwtFromRequest` extracts the token from either `Authorization: Bearer ...`
+**or** the `?token=` query string. We only ever use the header form.
 
-### Authelia bypass
+### How the CLI receives it
+
+| Source         | Mechanism                                |
+| -------------- | ---------------------------------------- |
+| Env var        | `ABS_API_TOKEN` (preferred, cron-friendly) |
+| CLI flag       | `--abs-token` (overrides env, ad-hoc use) |
+| Never accepted | stdin prompt, config file, command argv with the token visible to `ps` |
+
+Storage on disk: not by this tool. Users keep the token in
+`systemd EnvironmentFile=`, a Docker `--env-file`, a k8s Secret, or
+a shell-rc file with 0600 mode — same pattern as `ABS_URL`,
+`LIBROFM_USER`, `LIBROFM_PASSWORD`. The CLI never writes it anywhere.
+
+### How the generated ABS client uses it
+
+The OpenAPI spec (`api/audiobookshelf.openapi.yaml`) declares one
+top-level security scheme:
+
+```yaml
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - bearerAuth: []
+```
+
+`oapi-codegen` produces a `ClientWithResponses` plus a
+`WithRequestEditorFn` option. We construct it once in
+`internal/abs/client.go`:
+
+```go
+editor := func(_ context.Context, req *http.Request) error {
+    req.Header.Set("Authorization", "Bearer "+absToken)
+    return nil
+}
+client, _ := abs.NewClientWithResponses(absURL, abs.WithRequestEditorFn(editor))
+```
+
+The same client is then wrapped with a request/response logger
+(`internal/logx`) that scrubs the Authorization header before any
+log line is written — `Authorization: Bearer ***last8`. The token
+never appears unredacted in logs, errors, or panic traces.
+
+### Authelia bypass (deployment prerequisite)
 
 The user's ABS instance sits behind Authelia OIDC. Authelia *must*
 be configured to skip auth for the API routes our CLI calls,
@@ -44,12 +90,34 @@ access_control:
 We don't manage this config from our CLI, but the README will need
 to call it out as a deployment prerequisite.
 
-### Verifying auth from the CLI
+### Verifying auth at startup
 
-The cheapest sanity check is `GET /api/me` — returns the current
-user JSON if the token is good, 401 otherwise. The probe script
-`scripts/probe-abs-auth.sh` does exactly this and also asserts that
-the response is JSON (not HTML from an Authelia redirect).
+The very first action the CLI performs is `GET /api/me`. Two
+distinct failures we handle explicitly, not as generic JSON errors:
+
+| Symptom                                  | Diagnosis                                                | Action                                               |
+| ---------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| `Content-Type: text/html`                | Authelia is intercepting — bypass rule missing/wrong     | Exit non-zero with link to the Authelia snippet above |
+| `401 Unauthorized` with JSON body        | Bearer is rejected by ABS (revoked / typo / wrong user)  | Exit non-zero with "rotate `ABS_API_TOKEN`"          |
+| `200` with `{username, ...}`             | Auth OK                                                  | Continue to reconciliation                           |
+
+The cheapest standalone check is `scripts/probe-abs-auth.sh`, which
+does the same assertions outside the Go code so the user can
+diagnose Authelia issues without rebuilding.
+
+### Token lifetime, rotation, revocation
+
+ABS API keys don't expire on their own. If the user revokes/rotates
+one in the UI, our next `/api/me` returns 401 and the run exits
+non-zero with a clear message. There's no silent retry against a
+stale credential, and no in-process refresh path — by design, since
+there's nothing to refresh.
+
+If a future user needs short-lived session JWTs instead (e.g.
+no API-token support in some forked ABS), the same Bearer header
+works — only the provisioning step changes (`POST /login` to obtain
+a JWT, attach it the same way). Out of scope for v1; documented for
+future extension.
 
 ## Endpoints we'll call
 
