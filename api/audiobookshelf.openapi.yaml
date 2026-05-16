@@ -180,8 +180,8 @@ paths:
                 libraryId: { type: string }
                 folderId:  { type: string }
                 title:     { type: string }
-                author:    { type: string, nullable: true }
-                series:    { type: string, nullable: true }
+                author:    { type: [string, "null"] }
+                series:    { type: [string, "null"] }
                 files:
                   type: array
                   items:
@@ -369,7 +369,7 @@ components:
         isFile:    { type: boolean }
         mtimeMs:   { type: integer }
         ctimeMs:   { type: integer }
-        birthtimeMs:{ type: integer }
+        birthtimeMs: { type: integer }
         addedAt:   { type: integer }
         updatedAt: { type: integer }
         isMissing: { type: boolean }
@@ -385,7 +385,7 @@ components:
         listings are omitted.
       properties:
         id:          { type: string }
-        coverPath:   { type: string, nullable: true }
+        coverPath:   { type: [string, "null"] }
         tags:
           type: array
           items: { type: string }
@@ -396,23 +396,23 @@ components:
       additionalProperties: true
       description: The 'minified' metadata shape returned by /libraries/{id}/items?minified=1.
       properties:
-        title:         { type: string, nullable: true }
-        titleIgnorePrefix: { type: string, nullable: true }
-        subtitle:      { type: string, nullable: true }
-        authorName:    { type: string, nullable: true, description: 'Joined "First, Second" string — minified shape only.' }
-        narratorName:  { type: string, nullable: true }
-        seriesName:    { type: string, nullable: true }
+        title:         { type: [string, "null"] }
+        titleIgnorePrefix: { type: [string, "null"] }
+        subtitle:      { type: [string, "null"] }
+        authorName:    { type: [string, "null"], description: 'Joined "First, Second" string — minified shape only.' }
+        narratorName:  { type: [string, "null"] }
+        seriesName:    { type: [string, "null"] }
         genres:
           type: array
           items: { type: string }
-        publishedYear: { type: string, nullable: true }
-        publishedDate: { type: string, nullable: true }
-        publisher:     { type: string, nullable: true }
-        description:   { type: string, nullable: true }
-        isbn:          { type: string, nullable: true }
-        asin:          { type: string, nullable: true }
-        language:      { type: string, nullable: true }
-        explicit:      { type: boolean, nullable: true }
+        publishedYear: { type: [string, "null"] }
+        publishedDate: { type: [string, "null"] }
+        publisher:     { type: [string, "null"] }
+        description:   { type: [string, "null"] }
+        isbn:          { type: [string, "null"] }
+        asin:          { type: [string, "null"] }
+        language:      { type: [string, "null"] }
+        explicit:      { type: [boolean, "null"] }
 
     SearchResponse:
       type: object
@@ -467,20 +467,20 @@ components:
         `genres`) are REPLACED, not merged — always send a complete set.
       properties:
         title:         { type: string }
-        subtitle:      { type: string, nullable: true }
+        subtitle:      { type: [string, "null"] }
         authors:
           type: array
           items: { $ref: '#/components/schemas/AuthorRef' }
         narrators:
           type: array
           items: { type: string }
-        publishedYear: { type: string, nullable: true, description: 'String, not integer.' }
-        publisher:     { type: string, nullable: true }
-        description:   { type: string, nullable: true }
-        isbn:          { type: string, nullable: true }
-        asin:          { type: string, nullable: true }
-        language:      { type: string, nullable: true }
-        explicit:      { type: boolean, nullable: true }
+        publishedYear: { type: [string, "null"], description: 'String, not integer.' }
+        publisher:     { type: [string, "null"] }
+        description:   { type: [string, "null"] }
+        isbn:          { type: [string, "null"] }
+        asin:          { type: [string, "null"] }
+        language:      { type: [string, "null"] }
+        explicit:      { type: [boolean, "null"] }
         genres:
           type: array
           items: { type: string }
@@ -492,13 +492,13 @@ components:
       type: object
       required: [name]
       properties:
-        id:   { type: string, nullable: true, description: 'Omit to create-or-match by name.' }
+        id:   { type: [string, "null"], description: 'Omit to create-or-match by name.' }
         name: { type: string }
 
     SeriesRef:
       type: object
       required: [name]
       properties:
-        id:       { type: string, nullable: true }
+        id:       { type: [string, "null"] }
         name:     { type: string }
-        sequence: { type: string, nullable: true, description: 'String — supports "1", "1.5", "0.5".' }
+        sequence: { type: [string, "null"], description: 'String — supports "1", "1.5", "0.5".' }

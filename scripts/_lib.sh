@@ -23,7 +23,9 @@ redact() {
   if (( n <= 8 )); then
     printf '%s' '****'
   else
-    printf '%s%s' "$(printf '%*s' $((n - 8)) | tr ' ' '*')" "${s: -8}"
+    local stars
+    stars=$(printf '%*s' $((n - 8)) '' | tr ' ' '*')
+    printf '%s%s' "$stars" "${s: -8}"
   fi
 }
 
