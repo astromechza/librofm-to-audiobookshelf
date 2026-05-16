@@ -8,7 +8,7 @@
 # Final image is distroless/static + nonroot. Includes CA certs so we can
 # dial libro.fm and audiobookshelf over HTTPS. ~10 MB total.
 
-FROM --platform=$BUILDPLATFORM golang:1.23-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
 WORKDIR /src
 
 # Cache module downloads in their own layer.

@@ -8,8 +8,8 @@
 #   govulncheck   — CVE scanner, not a style/correctness analyzer
 #   oapi-codegen  — code generator
 #   goreleaser    — release packager
-GOLANGCI_LINT_VERSION ?= v1.61.0
-GOVULNCHECK_VERSION   ?= v1.1.3
+GOLANGCI_LINT_VERSION ?= v2.12.2
+GOVULNCHECK_VERSION   ?= v1.3.0
 OAPI_CODEGEN_VERSION  ?= v2.4.1
 GORELEASER_VERSION    ?= v2.3.2
 
@@ -23,7 +23,7 @@ help:
 
 .PHONY: tools
 tools: ## install pinned dev tools into $GOBIN
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
 	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
 	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)

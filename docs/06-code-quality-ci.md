@@ -8,6 +8,23 @@ User-confirmed choices:
 | Container registry | **GHCR only** — `ghcr.io/astromechza/librofm-to-audiobookshelf`           |
 | Dep updates        | **Manual** — `go get -u ./... && go mod tidy` on demand, no bot          |
 
+## Go version policy
+
+| Where                  | Value | Why                                                          |
+| ---------------------- | ----- | ------------------------------------------------------------ |
+| `go.mod` (`go` directive) | **1.25** | Linter constraint (see below). Source code stays back-compatible. |
+| CI `setup-go` / Dockerfile | **1.26** | Production builds use the current stable. |
+| `.golangci.yml` (`run.go`) | **1.25** | Must be ≤ the Go version golangci-lint was built with. |
+
+**Why `go.mod` is one minor behind the runtime.** `golangci-lint` is itself
+a Go program; v2.12.2 (the current release at the time of writing) was
+built with Go 1.25.10. The linter's bundled `go/types` panics if asked to
+load a module whose `go` directive is newer than 1.25. We keep `go.mod`
+at `go 1.25` (no `toolchain` directive) so the linter is happy; CI's
+`actions/setup-go` provides Go 1.26 for the actual build/test steps,
+which auto-honor the `go 1.25` directive as "any Go ≥ 1.25". Bump
+`go.mod` to `1.26` once a `golangci-lint` release bundles Go 1.26.
+
 ## One tool, many analyzers: golangci-lint
 
 `golangci-lint` is **not a wrapper that shells out to separate

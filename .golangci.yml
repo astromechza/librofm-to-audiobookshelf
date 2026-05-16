@@ -1,90 +1,110 @@
-# golangci-lint configuration.
-# Docs: https://golangci-lint.run/usage/configuration/
-#
-# Run locally:    make lint
-# Run in CI:      .github/workflows/ci.yml (go-lint job)
-
+version: "2"
 run:
-  timeout: 5m
-  go: "1.23"
-  tests: true
+  # Targeted Go version. Kept one minor BEHIND go.mod (which is 1.26) so we
+  # don't outrun the golangci-lint binary's own embedded Go toolchain — it
+  # refuses to lint code targeting a version newer than the one it was built
+  # with. Bump when a newer golangci-lint that bundles Go 1.26+ is pinned.
+  go: "1.25"
   modules-download-mode: readonly
-
+  tests: true
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - noctx
+    - nolintlint
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+  settings:
+    errcheck:
+      check-type-assertions: true
+      # check-blank: false (default) — `_, _ = ...` is the Go idiom for
+      # explicit error discard; we use it intentionally for resp.Body drains
+      # and for diagnostic ReadAll calls where the error is irrelevant.
+    gosec:
+      excludes:
+        - G104  # subsumed by errcheck
+        - G304  # file inclusion via variable — we open user-specified paths intentionally
+        - G117  # noisy on legit JSON marshaling of structs with secret-shaped field names
+      config:
+        G101:
+          pattern: (?i)(token|secret|password|key|bearer)
+    misspell:
+      locale: US
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    revive:
+      severity: warning
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: context-as-argument
+        - name: error-return
+        - name: error-naming
+        - name: error-strings
+        - name: receiver-naming
+        - name: time-naming
+        - name: unused-parameter
+          severity: warning
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - errcheck
+          - errorlint
+          - gosec
+          - prealloc
+          - revive
+          - staticcheck
+          - unconvert
+          - unused
+        path: internal/abs/gen\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    # Test code: skip the noisiest checks. Hand-written client code in
-    # internal/abs/ IS linted; only the generated file below is exempt.
-    - path: _test\.go
-      linters: [gosec, errcheck]
-    # Generated client. Edit api/audiobookshelf.openapi.yaml and `make generate`
-    # instead of fighting the linter here.
-    - path: internal/abs/gen\.go
-      linters: [revive, errcheck, gosec, staticcheck, unused, gofumpt, goimports, errorlint, prealloc, unconvert]
-
-linters:
-  disable-all: true
+formatters:
   enable:
-    - govet
-    - staticcheck
-    - errcheck
-    - ineffassign
-    - unused
     - gofumpt
     - goimports
-    - gosec
-    - bodyclose
-    - noctx
-    - errorlint
-    - revive
-    - nolintlint
-    - misspell
-    - unconvert
-    - prealloc
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-  gofumpt:
-    extra-rules: true
-
-  goimports:
-    local-prefixes: github.com/astromechza/librofm-to-audiobookshelf
-
-  gosec:
-    excludes:
-      - G104   # subsumed by errcheck above
-      - G304   # file inclusion via variable — we open user-specified paths intentionally
-    config:
-      G101:
-        pattern: "(?i)(token|secret|password|key|bearer)"   # extra-strict secret detection
-
-  revive:
-    severity: warning
-    rules:
-      - name: exported               # require doc comments on exported identifiers
-      - name: package-comments
-      - name: var-naming
-      - name: context-as-argument
-      - name: error-return
-      - name: error-naming
-      - name: error-strings
-      - name: receiver-naming
-      - name: time-naming
-      - name: unused-parameter
-        severity: warning
-        disabled: true               # noisy in HTTP handler / cobra cmd signatures
-
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-    allow-unused: false
-
-  misspell:
-    locale: US
-
-  staticcheck:
-    checks: ["all"]
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/astromechza/librofm-to-audiobookshelf
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+      - internal/abs/gen\.go
