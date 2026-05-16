@@ -13,13 +13,15 @@ run:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-dirs:
-    - internal/abs              # generated code lives at internal/abs/gen.go
   exclude-rules:
+    # Test code: skip the noisiest checks. Hand-written client code in
+    # internal/abs/ IS linted; only the generated file below is exempt.
     - path: _test\.go
-      linters: [gosec, errcheck]   # test code allowed to skip error checks and weak-rng warnings
+      linters: [gosec, errcheck]
+    # Generated client. Edit api/audiobookshelf.openapi.yaml and `make generate`
+    # instead of fighting the linter here.
     - path: internal/abs/gen\.go
-      linters: [revive, errcheck, gosec, staticcheck, unused, gofumpt, goimports]
+      linters: [revive, errcheck, gosec, staticcheck, unused, gofumpt, goimports, errorlint, prealloc, unconvert]
 
 linters:
   disable-all: true

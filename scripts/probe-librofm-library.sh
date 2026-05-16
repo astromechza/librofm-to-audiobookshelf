@@ -8,8 +8,6 @@ source "$(dirname "$0")/_lib.sh"
 
 need_cmd curl
 need_cmd jq
-[[ -s "$LIBROFM_TOKEN_FILE" ]] || die "no token at $LIBROFM_TOKEN_FILE — run probe-librofm-login.sh first"
-TOKEN=$(<"$LIBROFM_TOKEN_FILE")
 
 page=1
 total_pages=1
@@ -19,7 +17,7 @@ while (( page <= total_pages )); do
   log_req GET "https://libro.fm/api/v10/library?page=$page"
   resp=$(curl --fail-with-body --silent --show-error \
     "https://libro.fm/api/v10/library?page=$page" \
-    -H "Authorization: Bearer $TOKEN" \
+    -H @<(librofm_auth) \
     -H 'User-Agent: okhttp/3.14.9' \
     -H 'Content-Type: application/json')
   total_pages=$(jq -r '.total_pages // 1' <<<"$resp")

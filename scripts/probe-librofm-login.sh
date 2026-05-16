@@ -28,6 +28,7 @@ token=$(jq -r '.access_token // empty' <<<"$resp")
 [[ -n "$token" ]] || { echo "$resp" | jq . >&2; die "no access_token in response"; }
 
 umask 077
+mkdir -p "$(dirname "$LIBROFM_TOKEN_FILE")"
 printf '%s' "$token" > "$LIBROFM_TOKEN_FILE"
 
 echo "login OK"

@@ -29,8 +29,10 @@ Adding `--fix` makes it rewrite files in place — same as
 `gofumpt -w` + `goimports -w` combined. So we don't install or
 invoke those tools separately; `make fmt` is one `golangci-lint run --fix`.
 
-Generated files (`internal/abs/gen.go`) are exempt via
-`issues.exclude-dirs` — oapi-codegen output, not ours to format.
+Only the single generated file (`internal/abs/gen.go`) is exempt — via
+a per-file `issues.exclude-rules` entry, not a directory-wide exclusion.
+Everything else under `internal/abs/` (the hand-written wrapper, multipart
+upload helper, discovery polling code) IS linted normally.
 
 ### What is *not* in golangci-lint (and stays as separate jobs/installs)
 

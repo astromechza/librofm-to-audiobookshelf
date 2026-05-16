@@ -14,13 +14,14 @@ need_cmd jq
 log_req GET "$ABS_URL/api/libraries"
 libs=$(curl --fail-with-body --silent --show-error \
   "$ABS_URL/api/libraries" \
-  -H "Authorization: Bearer $ABS_API_TOKEN")
+  -H @<(abs_auth))
 
 echo "--- libraries ---"
 jq -r '.libraries[] | "\(.id)\t\(.name)\t\(.mediaType)\t\(.folders | length) folder(s)"' <<<"$libs"
 
 # Pick the library: env override > first 'book' library > first library
 lib_id="${ABS_LIBRARY_ID:-$(jq -r 'first(.libraries[] | select(.mediaType == "book")) // .libraries[0] | .id' <<<"$libs")}"
+[[ -n "$lib_id" && "$lib_id" != "null" ]] || die "no libraries found"
 lib_name=$(jq -r --arg id "$lib_id" '.libraries[] | select(.id == $id) | .name' <<<"$libs")
 echo
 echo "using library: $lib_name ($lib_id)"
@@ -29,7 +30,7 @@ echo
 log_req GET "$ABS_URL/api/libraries/$lib_id/items?limit=5&minified=1"
 items=$(curl --fail-with-body --silent --show-error \
   "$ABS_URL/api/libraries/$lib_id/items?limit=5&minified=1" \
-  -H "Authorization: Bearer $ABS_API_TOKEN")
+  -H @<(abs_auth))
 
 total=$(jq -r '.total' <<<"$items")
 echo "library has $total items (showing first 5)"

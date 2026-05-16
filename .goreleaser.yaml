@@ -13,8 +13,13 @@ project_name: librofm-sync
 
 before:
   hooks:
-    - go mod tidy
-    - go generate ./...
+    # NOT running `go generate` or `go mod tidy` here: a release must build
+    # exactly the tree at the tagged commit. The CI drift-check
+    # (.github/workflows/ci.yml: generate-drift) already guarantees the
+    # generated file and go.mod/go.sum are in sync at merge time, so
+    # mutating them at release time would only introduce risk of a
+    # non-deterministic release.
+    - go mod download
 
 builds:
   - id: librofm-sync

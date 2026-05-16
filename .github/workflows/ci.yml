@@ -16,6 +16,9 @@ env:
   GO_VERSION: "1.23"
   GOLANGCI_LINT_VERSION: "v1.61.0"
   GOVULNCHECK_VERSION: "v1.1.3"
+  # Pin Redocly to a specific minor — upstream releases can otherwise break CI
+  # with no repo change. Bump in lockstep with any deliberate spec/tooling work.
+  REDOCLY_CLI_VERSION: "1.34.3"
 
 jobs:
 
@@ -37,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: redocly lint
-        run: npx --yes @redocly/cli@latest lint api/audiobookshelf.openapi.yaml
+        run: npx --yes "@redocly/cli@${{ env.REDOCLY_CLI_VERSION }}" lint api/audiobookshelf.openapi.yaml
 
   # Go jobs — skipped cleanly until go.mod exists.
 
@@ -126,11 +129,18 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      - run: go generate ./...
+      - name: go generate
+        run: go generate ./...
+      - name: go mod tidy
+        # `go mod tidy -diff` (Go 1.23+) fails non-zero without writing if tidy
+        # would change anything — same semantics as the diff check below but
+        # surfaces tidy-specific output. Belt-and-braces: also fall through to
+        # the global git diff so any other generated file is covered.
+        run: go mod tidy -diff
       - name: fail on diff
         run: |
           if ! git diff --exit-code; then
-            echo "::error::generated files are out of date — run 'make generate' and commit."
+            echo "::error::generated files, go.mod, or go.sum are out of date — run 'make generate && go mod tidy' and commit."
             exit 1
           fi
 
@@ -150,3 +160,29 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Aggregate gate. Configure ONLY this job as the required status check in
+  # branch protection. It succeeds when every needed job either passed or
+  # was legitimately skipped (e.g. before go.mod exists). Avoids the
+  # "skipped status checks block PRs" trap that hits multi-job workflows.
+  ci-pass:
+    name: ci-pass
+    needs:
+      - shellcheck
+      - openapi-lint
+      - detect-go
+      - build
+      - test
+      - lint
+      - vuln
+      - generate-drift
+      - docker-smoke
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: verify no upstream job failed or was cancelled
+        run: |
+          fails='${{ toJson(needs) }}'
+          echo "$fails"
+          echo "$fails" | jq -e '[.[] | .result] | all(. == "success" or . == "skipped")' >/dev/null \
+            || { echo "::error::one or more required jobs failed or were cancelled"; exit 1; }

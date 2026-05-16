@@ -18,7 +18,7 @@ tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 ct=$(curl --silent --output "$tmp" --write-out '%{content_type}\n' \
   "$ABS_URL/api/me" \
-  -H "Authorization: Bearer $ABS_API_TOKEN")
+  -H @<(abs_auth))
 
 if [[ "$ct" != application/json* ]]; then
   echo "FAIL: expected Content-Type: application/json, got: $ct" >&2
@@ -29,8 +29,10 @@ if [[ "$ct" != application/json* ]]; then
 fi
 
 user=$(jq -r '.username' "$tmp")
-isAdmin=$(jq -r '.isAdmin // .type // "?"' "$tmp")
+is_admin=$(jq -r '.isAdmin // false' "$tmp")
+acct_type=$(jq -r '.type // "?"' "$tmp")
 echo "auth OK"
-echo "  user:    $user"
-echo "  type:    $isAdmin"
-echo "  token:   $(redact "$ABS_API_TOKEN")"
+echo "  user:     $user"
+echo "  type:     $acct_type"
+echo "  isAdmin:  $is_admin"
+echo "  token:    $(redact "$ABS_API_TOKEN")"

@@ -35,9 +35,10 @@ generate: ## regenerate the ABS client from the OpenAPI spec
 	go generate ./...
 
 .PHONY: generate-check
-generate-check: generate ## fail if generated code is out of date
-	@git diff --exit-code -- internal/abs/gen.go \
-	  || (echo "ERROR: generated code is stale; run 'make generate' and commit." && exit 1)
+generate-check: generate ## fail if generated code (or go.mod/go.sum) is out of date
+	@go mod tidy
+	@git diff --exit-code \
+	  || (echo "ERROR: generated files / go.mod / go.sum are stale; run 'make generate && go mod tidy' and commit." && exit 1)
 
 # ---- formatting & linting ------------------------------------------------
 #

@@ -32,9 +32,11 @@ fi
 # --- 1. Pick library + folder ---
 libs=$(curl --fail-with-body --silent --show-error \
   "$ABS_URL/api/libraries" \
-  -H "Authorization: Bearer $ABS_API_TOKEN")
-lib_id="${ABS_LIBRARY_ID:-$(jq -r 'first(.libraries[] | select(.mediaType == "book")) | .id' <<<"$libs")}"
-folder_id=$(jq -r --arg id "$lib_id" '.libraries[] | select(.id == $id) | .folders[0].id' <<<"$libs")
+  -H @<(abs_auth))
+lib_id="${ABS_LIBRARY_ID:-$(jq -r 'first(.libraries[] | select(.mediaType == "book")) // .libraries[0] | .id' <<<"$libs")}"
+[[ -n "$lib_id" && "$lib_id" != "null" ]] || die "no libraries found in $ABS_URL"
+folder_id=$(jq -r --arg id "$lib_id" '.libraries[] | select(.id == $id) | .folders[0].id // empty' <<<"$libs")
+[[ -n "$folder_id" && "$folder_id" != "null" ]] || die "library $lib_id has no folders"
 echo "library:  $lib_id"
 echo "folder:   $folder_id"
 
@@ -42,7 +44,7 @@ echo "folder:   $folder_id"
 log_req POST "$ABS_URL/api/upload"
 curl --fail-with-body --silent --show-error \
   "$ABS_URL/api/upload" \
-  -H "Authorization: Bearer $ABS_API_TOKEN" \
+  -H @<(abs_auth) \
   -F "libraryId=$lib_id" \
   -F "folderId=$folder_id" \
   -F "title=$TEST_TITLE" \
@@ -58,7 +60,7 @@ for delay in 1 2 4 8 16; do
   sleep "$delay"
   results=$(curl --fail-with-body --silent --show-error \
     "$ABS_URL/api/libraries/$lib_id/search?q=$(jq -rn --arg t "$TEST_TITLE" '$t | @uri')&limit=12" \
-    -H "Authorization: Bearer $ABS_API_TOKEN")
+    -H @<(abs_auth))
   item_id=$(jq -r --arg t "$TEST_TITLE" '.book[]?.libraryItem | select(.media.metadata.title == $t) | .id' <<<"$results" | head -1)
   if [[ -n "$item_id" ]]; then
     echo "found after ${delay}s: $item_id"
@@ -93,7 +95,7 @@ patch_body=$(jq -n \
   }')
 curl --fail-with-body --silent --show-error \
   -X PATCH "$ABS_URL/api/items/$item_id/media" \
-  -H "Authorization: Bearer $ABS_API_TOKEN" \
+  -H @<(abs_auth) \
   -H 'Content-Type: application/json' \
   --data "$patch_body" | jq '{updated, title: .libraryItem.media.metadata.title, isbn: .libraryItem.media.metadata.isbn}'
 
@@ -102,7 +104,7 @@ log_req POST "$ABS_URL/api/items/$item_id/cover"
 cover_url='https://placehold.co/600x800/png'
 curl --fail-with-body --silent --show-error \
   -X POST "$ABS_URL/api/items/$item_id/cover" \
-  -H "Authorization: Bearer $ABS_API_TOKEN" \
+  -H @<(abs_auth) \
   -H 'Content-Type: application/json' \
   --data "$(jq -n --arg url "$cover_url" '{url: $url}')" | jq .
 

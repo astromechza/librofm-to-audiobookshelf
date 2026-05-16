@@ -153,6 +153,17 @@ Avoid: ORMs, framework HTTP clients, third-party logging libraries
 
 **Confirm with user before adding anything beyond this list.**
 
+## ADR-008 — Logging & secrets
+
+**Decision:** `log/slog` with a JSON handler, level controlled by `-v`.
+Always redact: bearer tokens (`Authorization: Bearer ***`), passwords,
+the `access_token` field in any logged JSON. Use a custom
+`slog.Handler` wrapper or per-call sanitization.
+
+ISBNs, titles, and authors are not secrets — log them freely.
+
+---
+
 ## ADR-009 — ABS client is generated from OpenAPI
 
 **Decision:** The audiobookshelf HTTP client is **not** hand-written.
@@ -170,17 +181,6 @@ typed models and a client from it via `go generate`.
 - Multipart endpoints (`/api/upload`, multipart variant of `/api/items/:id/cover`) get a hand-written helper alongside the generated client — OpenAPI multipart codegen in Go is awkward and we'd lose more than we gain.
 - The generated file is committed so fresh checkouts don't need `go generate`. CI enforces it stays in sync.
 - We do **not** apply the same approach to the libro.fm client (no published spec; pretending otherwise would create false stability).
-
----
-
-## ADR-008 — Logging & secrets
-
-**Decision:** `log/slog` with a JSON handler, level controlled by `-v`.
-Always redact: bearer tokens (`Authorization: Bearer ***`), passwords,
-the `access_token` field in any logged JSON. Use a custom
-`slog.Handler` wrapper or per-call sanitization.
-
-ISBNs, titles, and authors are not secrets — log them freely.
 
 ---
 
