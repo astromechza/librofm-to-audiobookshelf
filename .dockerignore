@@ -1,0 +1,10 @@
+# Dockerfile only COPYs the pre-built `librofm-sync` binary from the build
+# context root, so the context can be tiny. Excluding common noise here in
+# case `docker build .` is run from the repo root with the binary staged.
+.git
+.github
+dist
+bin
+cover.out
+*.test
+*.out

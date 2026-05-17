@@ -1,0 +1,22 @@
+# oapi-codegen configuration for the audiobookshelf client.
+#
+# Run via `go generate ./...` (see internal/abs/gen.go).
+# Tool installed via tools.go to pin its version in go.mod.
+
+# Output path is supplied at invocation time (-o flag) so this config works
+# regardless of where `oapi-codegen` is run from. See internal/abs/generate.go
+# for the go:generate directive.
+
+package: abs
+
+generate:
+  models: true
+  client: true
+  strict-server: false
+  embedded-spec: false
+
+# Use the spec's bearerAuth scheme; oapi-codegen emits a `RequestEditorFn`
+# helper. We wire it up in internal/abs/client.go.
+output-options:
+  skip-prune: false
+  user-templates: {}

@@ -1,0 +1,506 @@
+openapi: 3.0.3
+
+info:
+  title: audiobookshelf — subset used by librofm-to-audiobookshelf
+  version: 0.0.1
+  description: |
+    A deliberately small subset of the audiobookshelf HTTP API, covering
+    exactly the endpoints this CLI needs to perform a one-shot reconciliation:
+
+      1. authenticate and identify the library      (GET /api/me, /api/libraries)
+      2. list / search existing items                (/api/libraries/{id}/items, /search)
+      3. upload a new audiobook                      (POST /api/upload)
+      4. discover the new item                       (search/items polling)
+      5. patch its metadata                          (PATCH /api/items/{id}/media)
+      6. set its cover from a URL                    (POST /api/items/{id}/cover)
+
+    Out-of-scope: progress, collections, podcasts, players, sessions, RSS,
+    notifications, tools, backups, admin. If a future feature needs more
+    surface area, add it here first.
+
+    Source of truth for response shapes:
+      - server/controllers/MeController.js
+      - server/controllers/LibraryController.js
+      - server/controllers/LibraryItemController.js
+      - server/controllers/MiscController.js  (handleUpload)
+      - server/utils/queries/libraryItemFilters.js (search return shape)
+      - server/models/Book.js / LibraryItem.js  (metadata field shapes)
+
+    Where response shapes are partially documented in the upstream code,
+    schemas use `additionalProperties: true` plus a description noting
+    "fields beyond those listed exist; we intentionally don't model them."
+
+servers:
+  - url: '{baseUrl}'
+    description: User-provided audiobookshelf base URL (e.g. https://audiobookshelf.example.com)
+    variables:
+      baseUrl:
+        default: https://audiobookshelf.example.com
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: discovery
+    description: Find the right library and existing items
+  - name: ingest
+    description: Upload files and apply metadata
+
+paths:
+
+  /api/me:
+    get:
+      tags: [discovery]
+      operationId: getMe
+      summary: Current user (also serves as an auth probe)
+      description: |
+        Used at startup to validate the API key and prove that Authelia
+        (or any other reverse-proxy auth) is bypassing /api/* correctly.
+        A non-JSON response means the Authelia bypass is misconfigured.
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/libraries:
+    get:
+      tags: [discovery]
+      operationId: listLibraries
+      summary: List all libraries the user can access
+      responses:
+        '200':
+          description: Libraries list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [libraries]
+                additionalProperties: true
+                properties:
+                  libraries:
+                    type: array
+                    items: { $ref: '#/components/schemas/Library' }
+
+  /api/libraries/{libraryId}/items:
+    get:
+      tags: [discovery]
+      operationId: listLibraryItems
+      summary: Paginated library items
+      description: |
+        Used to build the "already synced" set on every run (ADR-003).
+        We always pass `minified=1` to keep the payload small; the
+        minified item shape exposes `media.metadata.isbn` which is our
+        join key against libro.fm.
+      parameters:
+        - $ref: '#/components/parameters/LibraryId'
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 0, default: 0 }
+          description: 0-indexed page number.
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 200 }
+        - in: query
+          name: minified
+          schema: { type: string, enum: ['0', '1'], default: '1' }
+        - in: query
+          name: sort
+          schema: { type: string }
+        - in: query
+          name: desc
+          schema: { type: string, enum: ['0', '1'] }
+        - in: query
+          name: filter
+          schema: { type: string }
+          description: Base64-encoded filter expression (e.g. `authors.<base64-id>`).
+        - in: query
+          name: collapseseries
+          schema: { type: string, enum: ['0', '1'] }
+        - in: query
+          name: include
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated items
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LibraryItemsPage' }
+
+  /api/libraries/{libraryId}/search:
+    get:
+      tags: [discovery]
+      operationId: searchLibrary
+      summary: Search a library
+      description: |
+        Used by the post-upload discovery poll (ADR-002) to find the
+        library item just created. Pass the upload's title as `q`.
+        Top-level shape is `{book, podcast, authors, narrators, series, tags}`;
+        we only care about `book`.
+      parameters:
+        - $ref: '#/components/parameters/LibraryId'
+        - in: query
+          name: q
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 12 }
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+
+  /api/upload:
+    post:
+      tags: [ingest]
+      operationId: uploadItem
+      summary: Upload one or more files to a library folder
+      description: |
+        Multipart. ABS uses `title`/`author`/`series` only for folder
+        naming under the library root; they are NOT persisted to the
+        Book record. Persisted metadata comes from the subsequent
+        PATCH /api/items/{itemId}/media call.
+
+        Returns 200 with no body. The new item appears in the library
+        only after the scanner picks it up (poll via /search).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [library, folder, title, files]
+              properties:
+                # ABS destructures `library`/`folder` from the body
+                # (server/controllers/MiscController.js handleUpload).
+                library: { type: string }
+                folder:  { type: string }
+                title:     { type: string }
+                author:    { type: string, nullable: true }
+                series:    { type: string, nullable: true }
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Upload accepted (no response body)
+        '400':
+          description: Bad request (no files, invalid title)
+        '403':
+          description: User lacks `canUpload` or library access
+
+  /api/items/{itemId}/media:
+    patch:
+      tags: [ingest]
+      operationId: updateItemMedia
+      summary: Update the media metadata on an existing library item
+      description: |
+        Send the full metadata payload — array fields (authors, narrators,
+        series, genres) are replaced, not merged.
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMediaRequest' }
+      responses:
+        '200':
+          description: Item updated
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required: [updated]
+                properties:
+                  updated:     { type: boolean }
+                  libraryItem: { $ref: '#/components/schemas/LibraryItem' }
+        '404':
+          description: Item not found
+
+  /api/items/{itemId}/cover:
+    post:
+      tags: [ingest]
+      operationId: setItemCover
+      summary: Set the cover for an item (from a URL or an uploaded file)
+      description: |
+        Two request bodies are supported by ABS; we only use the JSON-with-URL
+        variant. The libro.fm cover URL is on a public CDN, so ABS can fetch it
+        directly without us proxying bytes.
+      parameters:
+        - $ref: '#/components/parameters/ItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: Public URL ABS will fetch the cover from.
+          multipart/form-data:
+            schema:
+              type: object
+              required: [cover]
+              properties:
+                cover: { type: string, format: binary }
+      responses:
+        '200':
+          description: Cover set
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                required: [success]
+                properties:
+                  success: { type: boolean }
+                  cover:   { type: string, description: 'Path to the saved cover file on the server.' }
+        '404':
+          description: Item not found
+
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT  # Either a session JWT or a long-lived API key (both JWTs under the hood).
+
+  parameters:
+    LibraryId:
+      in: path
+      name: libraryId
+      required: true
+      schema: { type: string }
+    ItemId:
+      in: path
+      name: itemId
+      required: true
+      schema: { type: string }
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token (or Authelia intercepted with HTML)
+
+  schemas:
+
+    User:
+      type: object
+      additionalProperties: true
+      description: |
+        ABS user object. We only use `id`, `username`, and `isAdmin`/permissions
+        for diagnostics; many other fields exist.
+      properties:
+        id:       { type: string }
+        username: { type: string }
+        type:     { type: string, description: 'e.g. "root", "admin", "user"' }
+        isAdmin:  { type: boolean }
+        permissions:
+          type: object
+          additionalProperties: true
+          properties:
+            upload: { type: boolean }
+
+    Library:
+      type: object
+      additionalProperties: true
+      required: [id, name, mediaType, folders]
+      properties:
+        id:        { type: string }
+        name:      { type: string }
+        mediaType: { type: string, enum: [book, podcast] }
+        folders:
+          type: array
+          items: { $ref: '#/components/schemas/Folder' }
+
+    Folder:
+      type: object
+      additionalProperties: true
+      required: [id, fullPath]
+      properties:
+        id:       { type: string }
+        fullPath: { type: string }
+
+    LibraryItemsPage:
+      type: object
+      additionalProperties: true
+      required: [results, total, limit, page]
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/LibraryItem' }
+        total:          { type: integer }
+        limit:          { type: integer }
+        page:           { type: integer }
+        sortBy:         { type: string }
+        sortDesc:       { type: boolean }
+        filterBy:       { type: string }
+        mediaType:      { type: string }
+        minified:       { type: boolean }
+        collapseseries: { type: boolean }
+        include:        { type: string }
+        offset:         { type: integer }
+
+    LibraryItem:
+      type: object
+      additionalProperties: true
+      description: |
+        Minified shape. Many more fields exist in the un-minified shape
+        (libraryFiles, audioFiles, chapters, etc.) — we don't need them.
+      required: [id, mediaType, media]
+      properties:
+        id:        { type: string }
+        ino:       { type: string }
+        libraryId: { type: string }
+        folderId:  { type: string }
+        path:      { type: string }
+        relPath:   { type: string }
+        isFile:    { type: boolean }
+        mtimeMs:   { type: integer }
+        ctimeMs:   { type: integer }
+        birthtimeMs: { type: integer }
+        addedAt:   { type: integer }
+        updatedAt: { type: integer }
+        isMissing: { type: boolean }
+        isInvalid: { type: boolean }
+        mediaType: { type: string, enum: [book, podcast] }
+        media:     { $ref: '#/components/schemas/Media' }
+
+    Media:
+      type: object
+      additionalProperties: true
+      description: |
+        For books in minified mode, `metadata` is populated; full files
+        listings are omitted.
+      properties:
+        id:          { type: string }
+        coverPath:   { type: string, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        metadata:    { $ref: '#/components/schemas/BookMetadata' }
+
+    BookMetadata:
+      type: object
+      additionalProperties: true
+      description: The 'minified' metadata shape returned by /libraries/{id}/items?minified=1.
+      properties:
+        title:         { type: string, nullable: true }
+        titleIgnorePrefix: { type: string, nullable: true }
+        subtitle:      { type: string, nullable: true }
+        authorName:    { type: string, nullable: true, description: 'Joined "First, Second" string — minified shape only.' }
+        narratorName:  { type: string, nullable: true }
+        seriesName:    { type: string, nullable: true }
+        genres:
+          type: array
+          items: { type: string }
+        publishedYear: { type: string, nullable: true }
+        publishedDate: { type: string, nullable: true }
+        publisher:     { type: string, nullable: true }
+        description:   { type: string, nullable: true }
+        isbn:          { type: string, nullable: true }
+        asin:          { type: string, nullable: true }
+        language:      { type: string, nullable: true }
+        explicit:      { type: boolean, nullable: true }
+
+    SearchResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        book:
+          type: array
+          items: { $ref: '#/components/schemas/SearchHitBook' }
+        podcast:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        authors:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        narrators:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        series:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tags:
+          type: array
+          items: { type: string }
+
+    SearchHitBook:
+      type: object
+      additionalProperties: true
+      required: [libraryItem]
+      properties:
+        libraryItem: { $ref: '#/components/schemas/LibraryItem' }
+        matchKey:    { type: string, description: 'e.g. "title", "subtitle", "authors", "narrators"' }
+        matchText:   { type: string }
+
+    UpdateMediaRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        metadata: { $ref: '#/components/schemas/UpdateMediaMetadata' }
+
+    UpdateMediaMetadata:
+      type: object
+      description: |
+        Full metadata payload. Array fields (`authors`, `narrators`, `series`,
+        `genres`) are REPLACED, not merged — always send a complete set.
+      properties:
+        title:         { type: string }
+        subtitle:      { type: string, nullable: true }
+        authors:
+          type: array
+          items: { $ref: '#/components/schemas/AuthorRef' }
+        narrators:
+          type: array
+          items: { type: string }
+        publishedYear: { type: string, nullable: true, description: 'String, not integer.' }
+        publisher:     { type: string, nullable: true }
+        description:   { type: string, nullable: true }
+        isbn:          { type: string, nullable: true }
+        asin:          { type: string, nullable: true }
+        language:      { type: string, nullable: true }
+        explicit:      { type: boolean, nullable: true }
+        genres:
+          type: array
+          items: { type: string }
+        series:
+          type: array
+          items: { $ref: '#/components/schemas/SeriesRef' }
+
+    AuthorRef:
+      type: object
+      required: [name]
+      properties:
+        id:   { type: string, nullable: true, description: 'Omit to create-or-match by name.' }
+        name: { type: string }
+
+    SeriesRef:
+      type: object
+      required: [name]
+      properties:
+        id:       { type: string, nullable: true }
+        name:     { type: string }
+        sequence: { type: string, nullable: true, description: 'String — supports "1", "1.5", "0.5".' }

@@ -30,3 +30,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local build output (Makefile writes binaries here; goreleaser writes dist/).
+/bin/
+/dist/
