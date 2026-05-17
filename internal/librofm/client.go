@@ -130,17 +130,29 @@ func (c *Client) Login(ctx context.Context, username, password string, force boo
 	defer resp.Body.Close()
 
 	if resp.StatusCode/100 != 2 {
-		detail := decodeOAuthError(resp.Body)
+		body := readBodySnippet(resp.Body)
+		c.logger.Debug("librofm login non-2xx", "status", resp.StatusCode, "body", body)
+
+		// Build the cleanest description we can:
+		//   - prefer OAuth-parsed detail (`error_description` > `error`)
+		//   - fall back to the raw body snippet
+		//   - fall back to a "HTTP N with empty body" marker so the user
+		//     never sees a bare 'unauthorized' with no context.
+		detail := parseOAuthDetail(body)
+		var msg string
+		switch {
+		case detail != "":
+			msg = detail
+		case body != "":
+			msg = body
+		default:
+			msg = fmt.Sprintf("HTTP %d with empty body", resp.StatusCode)
+		}
+
 		if resp.StatusCode == http.StatusUnauthorized {
-			if detail != "" {
-				return fmt.Errorf("%w: %s", ErrUnauthorized, detail)
-			}
-			return ErrUnauthorized
+			return fmt.Errorf("%w: %s", ErrUnauthorized, msg)
 		}
-		if detail == "" {
-			detail = "(no response body)"
-		}
-		return fmt.Errorf("login: HTTP %d: %s", resp.StatusCode, detail)
+		return fmt.Errorf("login: HTTP %d: %s", resp.StatusCode, msg)
 	}
 
 	var out loginResponse
@@ -362,30 +374,33 @@ func readBodySnippet(r io.Reader) string {
 	return strings.TrimSpace(string(b))
 }
 
-// decodeOAuthError pulls a human-readable string out of an OAuth2-style error
-// body. libro.fm typically returns
+// parseOAuthDetail pulls the human-readable string out of an OAuth2-style
+// error body. libro.fm typically returns something like
 //
 //	{"error":"invalid_grant","error_description":"Invalid email or password."}
 //
-// on bad credentials. Prefer error_description when present; fall back to
-// error; fall back to the raw body snippet. Returns "" only if the body is
-// empty.
-func decodeOAuthError(r io.Reader) string {
-	snippet := readBodySnippet(r)
-	if snippet == "" {
+// on bad credentials, but the actual shape isn't documented — older
+// responses may include only `error`, and some non-OAuth errors are plain
+// text or empty.
+//
+// Returns "" if the body has nothing parseable. The caller decides what to
+// substitute (e.g. the raw body snippet, or a sentinel like "empty body").
+func parseOAuthDetail(body string) string {
+	if body == "" {
 		return ""
 	}
 	var payload struct {
 		Error            string `json:"error"`
 		ErrorDescription string `json:"error_description"`
 	}
-	if err := json.Unmarshal([]byte(snippet), &payload); err == nil {
-		switch {
-		case payload.ErrorDescription != "":
-			return payload.ErrorDescription
-		case payload.Error != "":
-			return payload.Error
-		}
+	if err := json.Unmarshal([]byte(body), &payload); err != nil {
+		return ""
 	}
-	return snippet
+	switch {
+	case payload.ErrorDescription != "":
+		return payload.ErrorDescription
+	case payload.Error != "":
+		return payload.Error
+	}
+	return ""
 }

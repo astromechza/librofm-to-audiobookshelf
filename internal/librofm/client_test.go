@@ -69,6 +69,45 @@ func TestLogin_BadCredentials(t *testing.T) {
 	}
 }
 
+func TestLogin_BadCredentials_EmptyBody(t *testing.T) {
+	t.Parallel()
+	// libro.fm doesn't always include a JSON body on 401. Make sure the user
+	// still gets a useful HTTP-status hint instead of a bare error. //nolint:misspell // RFC-7235 / stdlib alignment
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(401)
+	})
+	c, _ := newClient(t, mux)
+
+	err := c.Login(context.Background(), "u", "wrong", false)
+	if !errors.Is(err, librofm.ErrUnauthorized) {
+		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+	if !strings.Contains(err.Error(), "HTTP 401") {
+		t.Errorf("err = %v, want HTTP-status hint when body is empty", err)
+	}
+}
+
+func TestLogin_BadCredentials_RawBody(t *testing.T) {
+	t.Parallel()
+	// Non-JSON body — surface the raw bytes (sandbox/egress proxies sometimes
+	// reject with `Host not in allowlist` etc.).
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte("Host not in allowlist"))
+	})
+	c, _ := newClient(t, mux)
+
+	err := c.Login(context.Background(), "u", "wrong", false)
+	if !errors.Is(err, librofm.ErrUnauthorized) {
+		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+	if !strings.Contains(err.Error(), "Host not in allowlist") {
+		t.Errorf("err = %v, want raw body in message", err)
+	}
+}
+
 func TestLogin_Non2xx_SurfacesErrorDescription(t *testing.T) {
 	t.Parallel()
 	mux := http.NewServeMux()
