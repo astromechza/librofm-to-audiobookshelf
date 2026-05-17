@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -72,6 +73,22 @@ func envFlag(fs *flag.FlagSet, name, env, usage string) *string {
 	return fs.String(name, val, fmt.Sprintf("%s (env: %s)", usage, env))
 }
 
+// headerFlag wires a repeatable `--librofm-header KEY=VALUE` into an
+// http.Header. Escape hatch for when libro.fm tightens its auth
+// fingerprint and our hardcoded defaults stop working.
+func headerFlag(fs *flag.FlagSet, name, usage string) *http.Header {
+	h := http.Header{}
+	fs.Func(name, usage, func(v string) error {
+		idx := strings.IndexByte(v, '=')
+		if idx <= 0 {
+			return fmt.Errorf("expected KEY=VALUE, got %q", v)
+		}
+		h.Add(strings.TrimSpace(v[:idx]), strings.TrimSpace(v[idx+1:]))
+		return nil
+	})
+	return &h
+}
+
 func setupLogger(verbose bool) *slog.Logger {
 	level := slog.LevelInfo
 	if verbose {
@@ -84,6 +101,7 @@ func runProbeLibroFm(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("probe-librofm", flag.ContinueOnError)
 	user := envFlag(fs, "librofm-user", "LIBROFM_USER", "libro.fm username (email)")
 	pass := envFlag(fs, "librofm-password", "LIBROFM_PASSWORD", "libro.fm password")
+	headers := headerFlag(fs, "librofm-header", "extra HTTP header for libro.fm requests, KEY=VALUE (repeatable). Overrides defaults like X-LibroFm-AppVer when libro.fm bumps required values.")
 	verbose := fs.Bool("v", false, "enable debug logging")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -98,8 +116,9 @@ func runProbeLibroFm(ctx context.Context, args []string) error {
 		return err
 	}
 	client := librofm.NewClient(librofm.Options{
-		Logger:     logger,
-		TokenCache: &librofm.TokenCache{Path: tokenPath},
+		Logger:       logger,
+		TokenCache:   &librofm.TokenCache{Path: tokenPath},
+		ExtraHeaders: *headers,
 	})
 
 	if err := client.Login(ctx, *user, *pass, false); err != nil {
@@ -184,6 +203,7 @@ func runSync(ctx context.Context, args []string) error {
 	workDir := envFlag(fs, "work-dir", "WORK_DIR", "directory to stage downloads in (default: temp)")
 	dryRun := fs.Bool("dry-run", false, "report what would happen without uploading or patching")
 	limit := fs.Int("limit", 0, "cap the number of libro.fm books considered (0 = no limit)")
+	headers := headerFlag(fs, "librofm-header", "extra HTTP header for libro.fm requests, KEY=VALUE (repeatable). Overrides defaults like X-LibroFm-AppVer.")
 	verbose := fs.Bool("v", false, "enable debug logging")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -205,8 +225,9 @@ func runSync(ctx context.Context, args []string) error {
 		return err
 	}
 	lf := librofm.NewClient(librofm.Options{
-		Logger:     logger,
-		TokenCache: &librofm.TokenCache{Path: tokenPath},
+		Logger:       logger,
+		TokenCache:   &librofm.TokenCache{Path: tokenPath},
+		ExtraHeaders: *headers,
 	})
 	if err := lf.Login(ctx, *user, *pass, false); err != nil {
 		return err
@@ -258,6 +279,7 @@ func runProbeDownload(ctx context.Context, args []string) error {
 	pass := envFlag(fs, "librofm-password", "LIBROFM_PASSWORD", "libro.fm password")
 	isbn := fs.String("isbn", "", "ISBN to download (must be in your library)")
 	outDir := fs.String("out-dir", "./out", "directory to stage downloaded files into")
+	headers := headerFlag(fs, "librofm-header", "extra HTTP header for libro.fm requests, KEY=VALUE (repeatable). Overrides defaults like X-LibroFm-AppVer.")
 	verbose := fs.Bool("v", false, "enable debug logging")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -275,8 +297,9 @@ func runProbeDownload(ctx context.Context, args []string) error {
 		return err
 	}
 	client := librofm.NewClient(librofm.Options{
-		Logger:     logger,
-		TokenCache: &librofm.TokenCache{Path: tokenPath},
+		Logger:       logger,
+		TokenCache:   &librofm.TokenCache{Path: tokenPath},
+		ExtraHeaders: *headers,
 	})
 	if err := client.Login(ctx, *user, *pass, false); err != nil {
 		return err

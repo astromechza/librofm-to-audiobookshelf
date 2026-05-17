@@ -14,19 +14,23 @@ maintained and matches what the current Android app emits.
 
 ## Base configuration
 
-| Item            | Value                                              |
-| --------------- | -------------------------------------------------- |
-| Base URL        | `https://libro.fm`                                 |
-| Content-Type    | `application/json` for all requests with a body    |
-| User-Agent      | `okhttp/3.14.9` (mimics Android app)               |
-| Auth header     | `Authorization: Bearer <access_token>`             |
-| Charset         | UTF-8 throughout                                   |
+| Item               | Value                                              |
+| ------------------ | -------------------------------------------------- |
+| Base URL           | `https://libro.fm`                                 |
+| Content-Type       | `application/json` for all requests with a body    |
+| User-Agent         | `okhttp/5.3.2` (mimics current Android app)        |
+| `X-LibroFm-AppVer` | `7.34.8` (REQUIRED — empty 401 without it)         |
+| Auth header        | `Authorization: Bearer <access_token>`             |
+| Charset            | UTF-8 throughout                                   |
 
-The Kotlin tool also accepts a `--libro-fm-headers KEY=VAL,KEY=VAL`
-flag so users can append extra headers (presumably for occasional
-cases where libro.fm starts requiring app-version or device-id
-headers). Our implementation should accept an equivalent
-`--extra-header` flag from day one.
+**App-version gate, May 2026.** libro.fm tightened `/oauth/token` to
+return an empty 401 when `X-LibroFm-AppVer` is missing. Both required
+values are cross-checked against the
+[burntcookie90/librofm-downloader Dockerfile](https://github.com/burntcookie90/librofm-downloader/blob/main/Dockerfile)
+(actively-maintained reference client). When libro.fm bumps the
+required app version again, either edit the defaults in
+`internal/librofm/client.go` or override at runtime via the
+`--librofm-header KEY=VALUE` CLI flag (repeatable).
 
 ## Endpoints
 

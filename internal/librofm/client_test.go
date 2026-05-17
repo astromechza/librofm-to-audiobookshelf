@@ -29,8 +29,11 @@ func TestLogin_Success(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		if got := r.Header.Get("User-Agent"); got != "okhttp/3.14.9" {
-			t.Errorf("User-Agent = %q, want okhttp/3.14.9", got)
+		if got := r.Header.Get("User-Agent"); got != "okhttp/5.3.2" {
+			t.Errorf("User-Agent = %q, want okhttp/5.3.2", got)
+		}
+		if got := r.Header.Get("X-LibroFm-AppVer"); got != "7.34.8" {
+			t.Errorf("X-LibroFm-AppVer = %q, want 7.34.8", got)
 		}
 		body, _ := io.ReadAll(r.Body)
 		if !strings.Contains(string(body), `"grant_type":"password"`) {
@@ -46,6 +49,29 @@ func TestLogin_Success(t *testing.T) {
 	}
 	if c.Token() != "tok-abc" {
 		t.Errorf("Token() = %q, want tok-abc", c.Token())
+	}
+}
+
+func TestLogin_ExtraHeadersOverrideDefaultAppVer(t *testing.T) {
+	t.Parallel()
+	var got http.Header
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		got = r.Header.Clone()
+		_, _ = w.Write([]byte(`{"access_token":"tok"}`))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	c := librofm.NewClient(librofm.Options{
+		BaseURL:      srv.URL,
+		TokenCache:   &librofm.TokenCache{Path: filepath.Join(t.TempDir(), "tok")},
+		ExtraHeaders: http.Header{"X-LibroFm-AppVer": []string{"99.99.99"}},
+	})
+	if err := c.Login(context.Background(), "u", "p", false); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if v := got.Get("X-LibroFm-AppVer"); v != "99.99.99" {
+		t.Errorf("X-LibroFm-AppVer = %q, want override 99.99.99 (got default instead?)", v)
 	}
 }
 

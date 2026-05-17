@@ -21,11 +21,19 @@ import (
 	"time"
 )
 
-// DefaultBaseURL is the production API root. The User-Agent we send mimics the
-// Android app so libro.fm doesn't return a different shape for "web" callers.
+// DefaultBaseURL is the production API root.
+//
+// Default request fingerprint mimics the current libro.fm Android app —
+// libro.fm started returning an empty 401 from /oauth/token for callers
+// that don't send X-LibroFm-AppVer. Values cross-checked against
+// burntcookie90/librofm-downloader's Dockerfile (the actively-maintained
+// reference client). When libro.fm bumps the required app version, either
+// edit these defaults or override via Options.ExtraHeaders.
 const (
 	DefaultBaseURL   = "https://libro.fm"
-	defaultUserAgent = "okhttp/3.14.9"
+	defaultUserAgent = "okhttp/5.3.2"
+	headerAppVer     = "X-LibroFm-AppVer"
+	defaultAppVer    = "7.34.8"
 )
 
 // Sentinel errors callers may want to match with errors.Is.
@@ -84,7 +92,7 @@ func NewClient(opts Options) *Client {
 		http:      opts.HTTPClient,
 		userAgent: defaultUserAgent,
 		logger:    opts.Logger,
-		extraHdrs: opts.ExtraHeaders.Clone(),
+		extraHdrs: canonicaliseHeaders(opts.ExtraHeaders),
 	}
 	if opts.TokenCache != nil {
 		c.tokenCache = *opts.TokenCache
@@ -337,6 +345,12 @@ func (c *Client) newAuthRequest(ctx context.Context, method, path string, body i
 
 func (c *Client) applyDefaultHeaders(req *http.Request) {
 	req.Header.Set("User-Agent", c.userAgent)
+	// X-LibroFm-AppVer is currently required by /oauth/token (an empty 401
+	// is returned without it). Skip if the caller already provided one via
+	// ExtraHeaders so they can override when libro.fm bumps the value.
+	if c.extraHdrs.Get(headerAppVer) == "" {
+		req.Header.Set(headerAppVer, defaultAppVer)
+	}
 	for k, vs := range c.extraHdrs {
 		for _, v := range vs {
 			req.Header.Add(k, v)
@@ -372,6 +386,20 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 func readBodySnippet(r io.Reader) string {
 	b, _ := io.ReadAll(io.LimitReader(r, 2048))
 	return strings.TrimSpace(string(b))
+}
+
+// canonicaliseHeaders copies src into a fresh http.Header, canonicalising
+// each key via Header.Add. Needed because callers can pass a raw
+// `map[string]...` literal — without canonical keys, .Get lookups silently
+// miss and we'd skip the user's override.
+func canonicaliseHeaders(src http.Header) http.Header {
+	dst := http.Header{}
+	for k, vs := range src {
+		for _, v := range vs {
+			dst.Add(k, v)
+		}
+	}
+	return dst
 }
 
 // parseOAuthDetail pulls the human-readable string out of an OAuth2-style
