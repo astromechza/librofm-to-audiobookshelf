@@ -21,6 +21,7 @@ import (
 	"syscall"
 
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/abs"
+	"github.com/astromechza/librofm-to-audiobookshelf/internal/format"
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/librofm"
 )
 
@@ -41,7 +42,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("no subcommand; expected one of: probe-librofm, probe-abs, version")
+		return errors.New("no subcommand; expected one of: probe-librofm, probe-abs, probe-download, version")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -54,6 +55,8 @@ func run(args []string) error {
 		return runProbeLibroFm(ctx, args[1:])
 	case "probe-abs":
 		return runProbeABS(ctx, args[1:])
+	case "probe-download":
+		return runProbeDownload(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown subcommand %q", args[0])
 	}
@@ -158,6 +161,77 @@ func runProbeABS(ctx context.Context, args []string) error {
 	fmt.Printf("libraries: %d\n", len(libsResp.JSON200.Libraries))
 	for _, lib := range libsResp.JSON200.Libraries {
 		fmt.Printf("  %s\t%s\t%s\t%d folder(s)\n", lib.Id, lib.Name, lib.MediaType, len(lib.Folders))
+	}
+	return nil
+}
+
+// runProbeDownload exercises the format package end-to-end against real
+// libro.fm: login, pick the book matching --isbn from the library, try the
+// M4B path with MP3 fallback, and stage the files in --out-dir. Useful to
+// visually inspect a downloaded audiobook (and its ID3 tags) before relying
+// on the reconciler.
+func runProbeDownload(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("probe-download", flag.ContinueOnError)
+	user := envFlag(fs, "librofm-user", "LIBROFM_USER", "libro.fm username (email)")
+	pass := envFlag(fs, "librofm-password", "LIBROFM_PASSWORD", "libro.fm password")
+	isbn := fs.String("isbn", "", "ISBN to download (must be in your library)")
+	outDir := fs.String("out-dir", "./out", "directory to stage downloaded files into")
+	verbose := fs.Bool("v", false, "enable debug logging")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *user == "" || *pass == "" {
+		return errors.New("--librofm-user and --librofm-password (or LIBROFM_USER/LIBROFM_PASSWORD) are required")
+	}
+	if *isbn == "" {
+		return errors.New("--isbn is required")
+	}
+
+	logger := setupLogger(*verbose)
+	tokenPath, err := librofm.DefaultTokenPath()
+	if err != nil {
+		return err
+	}
+	client := librofm.NewClient(librofm.Options{
+		Logger:     logger,
+		TokenCache: &librofm.TokenCache{Path: tokenPath},
+	})
+	if err := client.Login(ctx, *user, *pass, false); err != nil {
+		return fmt.Errorf("login: %w", err)
+	}
+
+	books, err := client.Library(ctx)
+	if err != nil {
+		return fmt.Errorf("library: %w", err)
+	}
+	var book librofm.Book
+	for _, b := range books {
+		if b.ISBN == *isbn {
+			book = b
+			break
+		}
+	}
+	if book.ISBN == "" {
+		return fmt.Errorf("ISBN %s not found in your library", *isbn)
+	}
+	fmt.Printf("found: %s — %s\n", book.Title, strings.Join(book.Authors, ", "))
+
+	if err := os.MkdirAll(*outDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %q: %w", *outDir, err)
+	}
+
+	res, err := format.DownloadM4B(ctx, client, book, *outDir)
+	if errors.Is(err, librofm.ErrNoM4B) {
+		fmt.Println("M4B not available; falling back to MP3")
+		res, err = format.DownloadMP3(ctx, client, book, *outDir)
+	}
+	if err != nil {
+		return fmt.Errorf("download: %w", err)
+	}
+
+	fmt.Printf("format: %s   workdir: %s\n", res.Format, res.WorkDir)
+	for _, f := range res.Files {
+		fmt.Printf("  %s\n", f.Name)
 	}
 	return nil
 }

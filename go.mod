@@ -2,7 +2,10 @@ module github.com/astromechza/librofm-to-audiobookshelf
 
 go 1.26
 
-require github.com/oapi-codegen/runtime v1.4.0
+require (
+	github.com/bogem/id3v2/v2 v2.1.4
+	github.com/oapi-codegen/runtime v1.4.0
+)
 
 require (
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
