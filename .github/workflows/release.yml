@@ -11,7 +11,7 @@ permissions:
   id-token: write    # reserved for future keyless cosign signing
 
 env:
-  GORELEASER_VERSION: "v2.3.2"
+  GORELEASER_VERSION: "v2.10.2"
 
 jobs:
   goreleaser:

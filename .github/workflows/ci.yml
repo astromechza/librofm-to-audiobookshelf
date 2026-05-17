@@ -15,7 +15,7 @@ concurrency:
 env:
   GOLANGCI_LINT_VERSION: "v2.12.2"
   GOVULNCHECK_VERSION: "v1.3.0"
-  GORELEASER_VERSION: "v2.3.2"
+  GORELEASER_VERSION: "v2.10.2"
   # Pin Redocly to a specific minor — upstream releases can otherwise break CI
   # with no repo change. Bump in lockstep with any deliberate spec/tooling work.
   REDOCLY_CLI_VERSION: "1.34.3"
