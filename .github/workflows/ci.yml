@@ -93,11 +93,6 @@ jobs:
     needs: detect-go
     if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
-    # TEMPORARY: golangci-lint v2.12.2 (current latest, May 2026) was built
-    # with Go 1.25.10 and its bundled go/types panics when loading a module
-    # whose `go` directive is 1.26+. Once a v2.13 release bundles Go 1.26,
-    # drop continue-on-error AND add this job back to ci-pass's `needs`.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -106,8 +101,9 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v7
         with:
-          # `latest` auto-recovers when a newer linter that supports Go 1.26
-          # is published — no repo change needed at that point.
+          # `latest` lets the action pull the newest binary from the project's
+          # GitHub releases — currently picks up the v2.12.2 build that works
+          # with Go 1.26 source. Bumping go.mod won't break this job.
           version: latest
 
   vuln:
@@ -115,20 +111,20 @@ jobs:
     needs: detect-go
     if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
-    # TEMPORARY: same story as golangci-lint. govulncheck v1.3.0 was built
-    # against Go 1.25 and its packages loader rejects Go-1.26 source as
-    # `package requires newer Go version go1.26 (application built with
-    # go1.25)`. Even golang.org/x/vuln@master has the same bundled go/types.
-    # Re-enforce (remove continue-on-error, restore to ci-pass needs) when a
-    # newer release supports Go 1.26.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      # GOTOOLCHAIN=local forces `go install` to use the Go from setup-go
+      # (matching go.mod). Without this, Go's auto-toolchain reads
+      # govulncheck's own go.mod (`go 1.25.0`) and DOWNGRADES the install
+      # toolchain to 1.25, producing a binary whose embedded go/types
+      # can't parse our Go-1.26 source. Same trick is in the Makefile.
       - run: go install golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+        env:
+          GOTOOLCHAIN: local
       - run: govulncheck ./...
 
   generate-drift:
@@ -179,10 +175,6 @@ jobs:
   # branch protection. It succeeds when every needed job either passed or
   # was legitimately skipped (e.g. before go.mod exists). Avoids the
   # "skipped status checks block PRs" trap that hits multi-job workflows.
-  #
-  # `lint` and `vuln` are intentionally NOT in `needs` while their bundled
-  # go/types loaders panic on Go 1.26 modules. Add them back when newer
-  # golangci-lint and govulncheck releases catch up.
   ci-pass:
     name: ci-pass
     needs:
@@ -191,6 +183,8 @@ jobs:
       - detect-go
       - build
       - test
+      - lint
+      - vuln
       - generate-drift
       - docker-smoke
     if: always()

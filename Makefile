@@ -26,9 +26,14 @@ help:
 
 .PHONY: tools
 tools: ## install pinned dev tools into $GOBIN
-	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
+	# GOTOOLCHAIN=local forces installs to use whatever Go is on PATH (must
+	# be >= the version in go.mod). Without it, Go's auto-toolchain reads
+	# each tool's own `go` directive and may downgrade — producing a binary
+	# whose embedded go/types can't parse our source. Same trick is in
+	# .github/workflows/ci.yml.
+	GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+	GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	GOTOOLCHAIN=local go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 # ---- generation ----------------------------------------------------------
 
@@ -84,7 +89,4 @@ snapshot: ## local GoReleaser dry-run
 # ---- aggregate -----------------------------------------------------------
 
 .PHONY: ci
-ci: generate-check test ## pre-push gate; runs the checks CI gates on
-	## NOTE: `lint` and `vuln` are omitted from `ci` while golangci-lint
-	## v2.12.2 and govulncheck v1.3.0 panic / reject on Go 1.26 modules.
-	## Run `make lint` / `make vuln` manually when you want them.
+ci: generate-check lint test vuln ## pre-push gate; runs all CI checks locally

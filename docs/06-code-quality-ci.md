@@ -21,29 +21,38 @@ picks it up.
 The `.golangci.yml` `run.go` mirrors the same version for documentation;
 it doesn't drive toolchain selection.
 
-### golangci-lint AND govulncheck vs Go 1.26 — temporary state
+> Reading from `go.mod` doesn't automatically prevent **install-time**
+> toolchain downgrades — see "Tool install vs go.mod Go version" below
+> for the `GOTOOLCHAIN=local` requirement.
 
-Both tools embed their own `go/types` for source analysis, and both ship
-binaries built with Go 1.25 as of May 2026:
+### Tool install vs `go.mod` Go version — `GOTOOLCHAIN=local`
 
-| Tool          | Current latest | Built with | Symptom on Go-1.26 module |
-| ------------- | -------------- | ---------- | ------------------------- |
-| golangci-lint | v2.12.2 (May 2026) | go1.25.10 | panic in `go/types.(*Checker).initFiles` |
-| govulncheck   | v1.3.0 (and master) | go1.25 | "package requires newer Go version go1.26" loader error |
+Both `golangci-lint` and `govulncheck` embed their own `go/types` to load
+source. The version of `go/types` baked into the binary is whatever Go
+version the binary was built with. That has to be **≥** the `go`
+directive in our `go.mod` — or the loader rejects our source as
+`package requires newer Go version`.
 
-Until newer releases ship built against Go 1.26:
+Subtle trap: even though `actions/setup-go` and our local toolchain run
+Go 1.26, **`go install` may downgrade**. Each tool's own `go.mod` says
+`go 1.25.0`, which Go's auto-toolchain treats as "1.25 is sufficient,
+let me use 1.25 to build it" — producing a 1.25-built binary that can't
+parse our 1.26 source.
 
-- The `lint` and `vuln` CI jobs run with `continue-on-error: true`.
-- Both are intentionally excluded from `ci-pass`'s `needs`, so their
-  failures don't block merges.
-- `lint` uses `version: latest` so a newer linter auto-recovers with no
-  repo change. `vuln` is pinned to `${{ env.GOVULNCHECK_VERSION }}` —
-  bump that env var when a newer release lands.
-- At that point: drop `continue-on-error: true` from both jobs and add
-  them back to `ci-pass`'s `needs`.
+Fix: install with `GOTOOLCHAIN=local` (force the install to use the Go
+version already in `$PATH`):
 
-`make lint` and `make vuln` fail locally for the same reason; `make ci`
-omits both for now. Run them manually if you want to see what they find.
+```bash
+GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
+GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+```
+
+This is wired up in both the CI workflow (per `env:` block on the
+install step) and the `Makefile` `tools` target.
+
+`golangci-lint-action@v7` is unaffected — it downloads pre-built release
+binaries from GitHub, not `go install`-built ones — so the `lint` job
+doesn't need the `GOTOOLCHAIN` trick.
 
 ## One tool, many analyzers: golangci-lint
 
