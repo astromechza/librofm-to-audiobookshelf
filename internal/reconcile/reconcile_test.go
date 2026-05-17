@@ -221,6 +221,36 @@ func TestRun_PresentNoMetadataTriggersRepair(t *testing.T) {
 	}
 }
 
+// Regression: a partial upload where ABS's scanner pulled a subtitle suffix
+// out of the audio file's ©nam tag should still be matched on a re-run, so we
+// PATCH metadata onto it rather than duplicate-uploading.
+func TestRun_FuzzMatchesSubtitleSuffix(t *testing.T) {
+	t.Parallel()
+	books := []librofm.Book{{ISBN: "444", Title: "Amberlough", Authors: []string{"Lara Elena Donnelly"}}}
+	absItems := []map[string]any{{
+		"id":        "itm-amber",
+		"mediaType": "book",
+		"media": map[string]any{
+			"metadata": map[string]any{
+				"title":      "Amberlough - A Novel",
+				"authorName": "Lara Elena Donnelly",
+			},
+		},
+	}}
+	lf, api, counters, opts := fixtures(t, books, absItems, "Audiobooks")
+
+	summary, err := reconcile.Run(context.Background(), lf, api, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if summary.Repaired != 1 || summary.Synced != 0 {
+		t.Errorf("summary = %+v, want Repaired=1 (matched the partial upload)", summary)
+	}
+	if counters.uploads.Load() != 0 {
+		t.Errorf("must not duplicate-upload, got uploads=%d", counters.uploads.Load())
+	}
+}
+
 func TestRun_DryRunMakesNoMutations(t *testing.T) {
 	t.Parallel()
 	books := []librofm.Book{

@@ -32,10 +32,16 @@ func indexABS(items []abs.LibraryItem) absIndex {
 		if isbn := metaISBN(it); isbn != "" {
 			idx.byISBN[isbn] = it
 		}
-		if key := fuzzKey(metaTitle(it), metaFirstAuthor(it)); key != "" {
-			// First write wins; an ABS library shouldn't have duplicates,
-			// but if it does, the first match is good enough for our
-			// "is it present?" question.
+		author := metaFirstAuthor(it)
+		// Index under the full title and (if different) the subtitle-
+		// stripped title — handles the common case where ABS's scanner
+		// pulled "Title - Subtitle" from an embedded ©nam tag while the
+		// libro.fm canonical title is just "Title". First write wins.
+		for _, t := range titleVariants(metaTitle(it)) {
+			key := fuzzKey(t, author)
+			if key == "" {
+				continue
+			}
 			if _, dup := idx.byFuzz[key]; !dup {
 				idx.byFuzz[key] = it
 			}
@@ -58,12 +64,36 @@ func (idx absIndex) classify(book librofm.Book) (bookState, abs.LibraryItem) {
 	if len(book.Authors) > 0 {
 		firstAuthor = book.Authors[0]
 	}
-	if it, ok := idx.byFuzz[fuzzKey(book.Title, firstAuthor)]; ok {
-		// Fuzz-matched: treat as present-but-incomplete so we patch ISBN +
-		// the rest of the metadata onto the user's existing item.
-		return statePresentNoMetadata, it
+	// Try the libro.fm title as-is, then its subtitle-stripped variant. The
+	// index already contains stripped forms of ABS titles, so this covers
+	// both directions: libro.fm short title vs ABS long title, and vice
+	// versa.
+	for _, t := range titleVariants(book.Title) {
+		if it, ok := idx.byFuzz[fuzzKey(t, firstAuthor)]; ok {
+			return statePresentNoMetadata, it
+		}
 	}
 	return stateNotPresent, abs.LibraryItem{}
+}
+
+// titleVariants returns the original title and, if it contains a common
+// subtitle separator, the prefix preceding the separator. The result is
+// deduplicated and never empty (an empty input returns an empty slice).
+func titleVariants(title string) []string {
+	t := strings.TrimSpace(title)
+	if t == "" {
+		return nil
+	}
+	out := []string{t}
+	for _, sep := range []string{" - ", ": ", "; "} {
+		if i := strings.Index(t, sep); i > 0 {
+			pref := strings.TrimSpace(t[:i])
+			if pref != "" && pref != t {
+				out = append(out, pref)
+			}
+		}
+	}
+	return out
 }
 
 // isMetadataComplete is the "good enough, skip" predicate. ISBN is the join

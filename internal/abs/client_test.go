@@ -3,6 +3,7 @@ package abs_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -239,6 +240,67 @@ func TestDiscover_FindsByTitle(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Errorf("calls = %d, want 2 (one miss + one hit)", calls)
+	}
+}
+
+func TestDiscover_TolerantMatch(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name      string
+		searchFor string
+		wantQuery string // query the server should receive (post-sanitise)
+		indexedAs string // title ABS's scanner ended up storing
+	}{
+		{
+			name:      "subtitle suffix added by scanner",
+			searchFor: "Amberlough",
+			wantQuery: "Amberlough",
+			indexedAs: "Amberlough - A Novel",
+		},
+		{
+			name:      "colon stripped from upload title but preserved by scanner",
+			searchFor: "Exodus The Archimedes Engine", // SafeFileName output
+			wantQuery: "Exodus The Archimedes Engine",
+			indexedAs: "Exodus: The Archimedes Engine",
+		},
+		{
+			name:      "case differs",
+			searchFor: "wanted title",
+			wantQuery: "wanted title",
+			indexedAs: "Wanted Title",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mux := http.NewServeMux()
+			mux.HandleFunc("/api/libraries/lib1/search", func(w http.ResponseWriter, r *http.Request) {
+				if got := r.URL.Query().Get("q"); got != tc.wantQuery {
+					t.Errorf("q = %q, want %q", got, tc.wantQuery)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprintf(w, `{"book":[
+					{"libraryItem":{"id":"itm-1","mediaType":"book","media":{
+						"metadata":{"title":%q,"authorName":"Jane"}
+					}}}
+				]}`, tc.indexedAs)
+			})
+			api := newTestAPI(t, mux)
+
+			item, err := api.Discover(context.Background(), abs.DiscoverInput{
+				LibraryID: "lib1",
+				Title:     tc.searchFor,
+				Backoffs:  []time.Duration{time.Millisecond},
+			})
+			if err != nil {
+				t.Fatalf("Discover: %v", err)
+			}
+			if item.Id != "itm-1" {
+				t.Errorf("item.Id = %q, want itm-1", item.Id)
+			}
+		})
 	}
 }
 
