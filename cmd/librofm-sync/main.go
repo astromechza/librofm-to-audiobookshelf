@@ -103,7 +103,7 @@ func runProbeLibroFm(ctx context.Context, args []string) error {
 	})
 
 	if err := client.Login(ctx, *user, *pass, false); err != nil {
-		return fmt.Errorf("login: %w", err)
+		return err
 	}
 	logger.Info("login OK", "token_cache", tokenPath)
 
@@ -209,7 +209,7 @@ func runSync(ctx context.Context, args []string) error {
 		TokenCache: &librofm.TokenCache{Path: tokenPath},
 	})
 	if err := lf.Login(ctx, *user, *pass, false); err != nil {
-		return fmt.Errorf("librofm login: %w", err)
+		return err
 	}
 
 	api, err := abs.NewAPI(abs.Options{
@@ -279,7 +279,7 @@ func runProbeDownload(ctx context.Context, args []string) error {
 		TokenCache: &librofm.TokenCache{Path: tokenPath},
 	})
 	if err := client.Login(ctx, *user, *pass, false); err != nil {
-		return fmt.Errorf("login: %w", err)
+		return err
 	}
 
 	books, err := client.Library(ctx)

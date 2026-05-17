@@ -114,7 +114,7 @@ func (c *Client) Login(ctx context.Context, username, password string, force boo
 		Password:  password,
 	})
 	if err != nil {
-		return fmt.Errorf("librofm.Login: marshal: %w", err)
+		return fmt.Errorf("login: marshal request: %w", err)
 	}
 
 	req, err := c.newRequest(ctx, http.MethodPost, "/oauth/token", bytes.NewReader(body))
@@ -125,23 +125,30 @@ func (c *Client) Login(ctx context.Context, username, password string, force boo
 
 	resp, err := c.do(req)
 	if err != nil {
-		return fmt.Errorf("librofm.Login: %w", err)
+		return fmt.Errorf("login: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode == http.StatusUnauthorized {
-		return ErrUnauthorized
-	}
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("librofm.Login: HTTP %d: %s", resp.StatusCode, readBodySnippet(resp.Body))
+		detail := decodeOAuthError(resp.Body)
+		if resp.StatusCode == http.StatusUnauthorized {
+			if detail != "" {
+				return fmt.Errorf("%w: %s", ErrUnauthorized, detail)
+			}
+			return ErrUnauthorized
+		}
+		if detail == "" {
+			detail = "(no response body)"
+		}
+		return fmt.Errorf("login: HTTP %d: %s", resp.StatusCode, detail)
 	}
 
 	var out loginResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return fmt.Errorf("librofm.Login: decode: %w", err)
+		return fmt.Errorf("login: decode response: %w", err)
 	}
 	if out.AccessToken == "" {
-		return errors.New("librofm.Login: empty access_token in response")
+		return errors.New("login: empty access_token in response")
 	}
 	c.token = out.AccessToken
 
@@ -353,4 +360,32 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 func readBodySnippet(r io.Reader) string {
 	b, _ := io.ReadAll(io.LimitReader(r, 2048))
 	return strings.TrimSpace(string(b))
+}
+
+// decodeOAuthError pulls a human-readable string out of an OAuth2-style error
+// body. libro.fm typically returns
+//
+//	{"error":"invalid_grant","error_description":"Invalid email or password."}
+//
+// on bad credentials. Prefer error_description when present; fall back to
+// error; fall back to the raw body snippet. Returns "" only if the body is
+// empty.
+func decodeOAuthError(r io.Reader) string {
+	snippet := readBodySnippet(r)
+	if snippet == "" {
+		return ""
+	}
+	var payload struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+	}
+	if err := json.Unmarshal([]byte(snippet), &payload); err == nil {
+		switch {
+		case payload.ErrorDescription != "":
+			return payload.ErrorDescription
+		case payload.Error != "":
+			return payload.Error
+		}
+	}
+	return snippet
 }

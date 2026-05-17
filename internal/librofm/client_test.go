@@ -54,13 +54,36 @@ func TestLogin_BadCredentials(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(401)
-		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"Invalid email or password."}`))
 	})
 	c, _ := newClient(t, mux)
 
 	err := c.Login(context.Background(), "u", "wrong", false)
 	if !errors.Is(err, librofm.ErrUnauthorized) {
 		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+	// The error_description from the response body should bubble up into the
+	// error message so the user sees a human-readable hint.
+	if !strings.Contains(err.Error(), "Invalid email or password") {
+		t.Errorf("err = %v, want 'Invalid email or password' in message", err)
+	}
+}
+
+func TestLogin_Non2xx_SurfacesErrorDescription(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(`{"error":"invalid_request","error_description":"missing grant_type"}`))
+	})
+	c, _ := newClient(t, mux)
+
+	err := c.Login(context.Background(), "u", "p", false)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "HTTP 422") || !strings.Contains(err.Error(), "missing grant_type") {
+		t.Errorf("err = %v, want 'HTTP 422' + 'missing grant_type'", err)
 	}
 }
 
