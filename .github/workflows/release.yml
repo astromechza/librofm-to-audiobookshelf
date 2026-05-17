@@ -12,6 +12,7 @@ permissions:
 
 env:
   GORELEASER_VERSION: "v2.10.2"
+  SYFT_VERSION: "v1.42.3"
 
 jobs:
   goreleaser:
@@ -36,6 +37,11 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          syft-version: ${{ env.SYFT_VERSION }}
 
       - uses: goreleaser/goreleaser-action@v6
         with:
