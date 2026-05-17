@@ -20,8 +20,6 @@ env:
 
 jobs:
 
-  # Always-on jobs — give the repo immediate value even before Go code lands.
-
   shellcheck:
     name: shellcheck (probe scripts)
     runs-on: ubuntu-latest
@@ -40,28 +38,8 @@ jobs:
       - name: redocly lint
         run: npx --yes "@redocly/cli@${{ env.REDOCLY_CLI_VERSION }}" lint api/audiobookshelf.openapi.yaml
 
-  # Go jobs — skipped cleanly until go.mod exists. The Go version comes from
-  # the `go` directive in go.mod via `go-version-file` (single source of truth).
-
-  detect-go:
-    name: detect Go module
-    runs-on: ubuntu-latest
-    outputs:
-      has_go: ${{ steps.check.outputs.has_go }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: check
-        run: |
-          if [ -f go.mod ]; then
-            echo "has_go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_go=false" >> "$GITHUB_OUTPUT"
-          fi
-
   build:
     name: go build
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,8 +51,6 @@ jobs:
 
   test:
     name: go test (race + coverage)
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,8 +66,6 @@ jobs:
 
   lint:
     name: golangci-lint
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -108,8 +82,6 @@ jobs:
 
   vuln:
     name: govulncheck
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,8 +101,6 @@ jobs:
 
   generate-drift:
     name: generate-drift check
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,8 +125,6 @@ jobs:
 
   docker-smoke:
     name: docker build smoke (multi-arch, no push)
-    needs: detect-go
-    if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -173,14 +141,13 @@ jobs:
 
   # Aggregate gate. Configure ONLY this job as the required status check in
   # branch protection. It succeeds when every needed job either passed or
-  # was legitimately skipped (e.g. before go.mod exists). Avoids the
-  # "skipped status checks block PRs" trap that hits multi-job workflows.
+  # was legitimately skipped. Avoids the "skipped status checks block PRs"
+  # trap that hits multi-job workflows.
   ci-pass:
     name: ci-pass
     needs:
       - shellcheck
       - openapi-lint
-      - detect-go
       - build
       - test
       - lint
