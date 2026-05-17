@@ -23,6 +23,7 @@ import (
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/abs"
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/format"
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/librofm"
+	"github.com/astromechza/librofm-to-audiobookshelf/internal/reconcile"
 )
 
 // Build-time identifiers injected via -ldflags. See Dockerfile and
@@ -42,7 +43,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return errors.New("no subcommand; expected one of: probe-librofm, probe-abs, probe-download, version")
+		return errors.New("no subcommand; expected one of: sync, probe-librofm, probe-abs, probe-download, version")
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -51,6 +52,8 @@ func run(args []string) error {
 	case "version":
 		fmt.Printf("librofm-sync %s (commit %s, built %s)\n", version, commit, date)
 		return nil
+	case "sync":
+		return runSync(ctx, args[1:])
 	case "probe-librofm":
 		return runProbeLibroFm(ctx, args[1:])
 	case "probe-abs":
@@ -161,6 +164,85 @@ func runProbeABS(ctx context.Context, args []string) error {
 	fmt.Printf("libraries: %d\n", len(libsResp.JSON200.Libraries))
 	for _, lib := range libsResp.JSON200.Libraries {
 		fmt.Printf("  %s\t%s\t%s\t%d folder(s)\n", lib.Id, lib.Name, lib.MediaType, len(lib.Folders))
+	}
+	return nil
+}
+
+// runSync is the real product entry point: one full reconciliation pass.
+//
+// Per ADR-004, this is one-shot — schedule via cron / systemd-timer / k8s
+// CronJob. Exit code 0 = no per-book failures; non-zero = at least one
+// per-book failure (the run still touches every book; per-book errors don't
+// abort the rest).
+func runSync(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("sync", flag.ContinueOnError)
+	user := envFlag(fs, "librofm-user", "LIBROFM_USER", "libro.fm username (email)")
+	pass := envFlag(fs, "librofm-password", "LIBROFM_PASSWORD", "libro.fm password")
+	absURL := envFlag(fs, "abs-url", "ABS_URL", "audiobookshelf base URL")
+	absToken := envFlag(fs, "abs-token", "ABS_API_TOKEN", "audiobookshelf API token")
+	library := envFlag(fs, "abs-library", "ABS_LIBRARY", "target ABS library name (case-insensitive)")
+	workDir := envFlag(fs, "work-dir", "WORK_DIR", "directory to stage downloads in (default: temp)")
+	dryRun := fs.Bool("dry-run", false, "report what would happen without uploading or patching")
+	limit := fs.Int("limit", 0, "cap the number of libro.fm books considered (0 = no limit)")
+	verbose := fs.Bool("v", false, "enable debug logging")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *user == "" || *pass == "" {
+		return errors.New("--librofm-user and --librofm-password (or LIBROFM_USER/LIBROFM_PASSWORD) are required")
+	}
+	if *absURL == "" || *absToken == "" {
+		return errors.New("--abs-url and --abs-token (or ABS_URL/ABS_API_TOKEN) are required")
+	}
+	if *library == "" {
+		return errors.New("--abs-library (or ABS_LIBRARY) is required")
+	}
+
+	logger := setupLogger(*verbose)
+
+	tokenPath, err := librofm.DefaultTokenPath()
+	if err != nil {
+		return err
+	}
+	lf := librofm.NewClient(librofm.Options{
+		Logger:     logger,
+		TokenCache: &librofm.TokenCache{Path: tokenPath},
+	})
+	if err := lf.Login(ctx, *user, *pass, false); err != nil {
+		return fmt.Errorf("librofm login: %w", err)
+	}
+
+	api, err := abs.NewAPI(abs.Options{
+		BaseURL: *absURL,
+		Token:   *absToken,
+		Logger:  logger,
+	})
+	if err != nil {
+		return err
+	}
+	// /me serves as the Authelia-bypass probe (docs/02-audiobookshelf-api.md).
+	if meResp, err := api.GetMeWithResponse(ctx); err != nil {
+		return fmt.Errorf("ABS /api/me: %w", err)
+	} else if meResp.JSON200 == nil {
+		return fmt.Errorf("ABS /api/me: HTTP %d (likely Authelia intercepted; see docs/02-audiobookshelf-api.md)", meResp.StatusCode())
+	}
+
+	summary, err := reconcile.Run(ctx, lf, api, reconcile.Options{
+		Library: *library,
+		DryRun:  *dryRun,
+		Limit:   *limit,
+		WorkDir: *workDir,
+		Logger:  logger,
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("librofm=%d considered=%d synced=%d repaired=%d already=%d failed=%d\n",
+		summary.LibroFmTotal, summary.Considered, summary.Synced,
+		summary.Repaired, summary.AlreadyPresent, summary.Failed)
+	if summary.Failed > 0 {
+		return fmt.Errorf("%d book(s) failed; see logs", summary.Failed)
 	}
 	return nil
 }
