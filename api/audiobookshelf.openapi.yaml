@@ -175,10 +175,12 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [libraryId, folderId, title, files]
+              required: [library, folder, title, files]
               properties:
-                libraryId: { type: string }
-                folderId:  { type: string }
+                # ABS destructures `library`/`folder` from the body
+                # (server/controllers/MiscController.js handleUpload).
+                library: { type: string }
+                folder:  { type: string }
                 title:     { type: string }
                 author:    { type: string, nullable: true }
                 series:    { type: string, nullable: true }

@@ -82,8 +82,10 @@ func (c *API) UploadItem(ctx context.Context, in UploadItemInput) error {
 			set(mw.WriteField(field, val))
 		}
 
-		write("libraryId", in.LibraryID)
-		write("folderId", in.FolderID)
+		// ABS destructures `library`/`folder` from the body, not `libraryId`/`folderId`
+		// (server/controllers/MiscController.js handleUpload).
+		write("library", in.LibraryID)
+		write("folder", in.FolderID)
 		write("title", in.Title)
 		write("author", in.Author)
 		write("series", in.Series)
