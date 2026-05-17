@@ -115,6 +115,13 @@ jobs:
     needs: detect-go
     if: needs.detect-go.outputs.has_go == 'true'
     runs-on: ubuntu-latest
+    # TEMPORARY: same story as golangci-lint. govulncheck v1.3.0 was built
+    # against Go 1.25 and its packages loader rejects Go-1.26 source as
+    # `package requires newer Go version go1.26 (application built with
+    # go1.25)`. Even golang.org/x/vuln@master has the same bundled go/types.
+    # Re-enforce (remove continue-on-error, restore to ci-pass needs) when a
+    # newer release supports Go 1.26.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -173,8 +180,9 @@ jobs:
   # was legitimately skipped (e.g. before go.mod exists). Avoids the
   # "skipped status checks block PRs" trap that hits multi-job workflows.
   #
-  # `lint` is intentionally NOT in `needs` while it's continue-on-error
-  # (Go-1.26 vs golangci-lint mismatch). Add it back when the linter catches up.
+  # `lint` and `vuln` are intentionally NOT in `needs` while their bundled
+  # go/types loaders panic on Go 1.26 modules. Add them back when newer
+  # golangci-lint and govulncheck releases catch up.
   ci-pass:
     name: ci-pass
     needs:
@@ -183,7 +191,6 @@ jobs:
       - detect-go
       - build
       - test
-      - vuln
       - generate-drift
       - docker-smoke
     if: always()

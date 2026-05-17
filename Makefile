@@ -84,6 +84,7 @@ snapshot: ## local GoReleaser dry-run
 # ---- aggregate -----------------------------------------------------------
 
 .PHONY: ci
-ci: generate-check test vuln ## pre-push gate; runs the checks CI gates on
-	## NOTE: `lint` is omitted from `ci` while golangci-lint v2.12.2 panics
-	## on Go 1.26 modules. Run `make lint` manually when you want it.
+ci: generate-check test ## pre-push gate; runs the checks CI gates on
+	## NOTE: `lint` and `vuln` are omitted from `ci` while golangci-lint
+	## v2.12.2 and govulncheck v1.3.0 panic / reject on Go 1.26 modules.
+	## Run `make lint` / `make vuln` manually when you want them.

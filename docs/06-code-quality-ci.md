@@ -21,21 +21,29 @@ picks it up.
 The `.golangci.yml` `run.go` mirrors the same version for documentation;
 it doesn't drive toolchain selection.
 
-### golangci-lint vs Go 1.26 — temporary state
+### golangci-lint AND govulncheck vs Go 1.26 — temporary state
 
-golangci-lint v2.12.2 (May 2026 latest) is itself built with Go 1.25.10.
-Its embedded `go/types` panics when loading a Go-1.26 module. Until a
-v2.13 release ships built against Go 1.26:
+Both tools embed their own `go/types` for source analysis, and both ship
+binaries built with Go 1.25 as of May 2026:
 
-- The `lint` CI job runs with `continue-on-error: true`.
-- It's intentionally excluded from `ci-pass`'s `needs`, so a lint failure
-  doesn't block merges.
-- The action uses `version: latest`, so a v2.13 release will auto-recover
-  the job with no repo change. At that point: drop
-  `continue-on-error: true` and add `lint` back to `ci-pass`'s `needs`.
+| Tool          | Current latest | Built with | Symptom on Go-1.26 module |
+| ------------- | -------------- | ---------- | ------------------------- |
+| golangci-lint | v2.12.2 (May 2026) | go1.25.10 | panic in `go/types.(*Checker).initFiles` |
+| govulncheck   | v1.3.0 (and master) | go1.25 | "package requires newer Go version go1.26" loader error |
 
-`make lint` will fail locally for the same reason; `make ci` therefore
-omits it for now. Run lint manually if you want to see what it finds.
+Until newer releases ship built against Go 1.26:
+
+- The `lint` and `vuln` CI jobs run with `continue-on-error: true`.
+- Both are intentionally excluded from `ci-pass`'s `needs`, so their
+  failures don't block merges.
+- `lint` uses `version: latest` so a newer linter auto-recovers with no
+  repo change. `vuln` is pinned to `${{ env.GOVULNCHECK_VERSION }}` —
+  bump that env var when a newer release lands.
+- At that point: drop `continue-on-error: true` from both jobs and add
+  them back to `ci-pass`'s `needs`.
+
+`make lint` and `make vuln` fail locally for the same reason; `make ci`
+omits both for now. Run them manually if you want to see what they find.
 
 ## One tool, many analyzers: golangci-lint
 
