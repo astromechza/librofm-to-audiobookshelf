@@ -370,12 +370,12 @@ type SearchLibraryParams struct {
 
 // UploadItemMultipartBody defines parameters for UploadItem.
 type UploadItemMultipartBody struct {
-	Author    *string              `json:"author,omitempty"`
-	Files     []openapi_types.File `json:"files"`
-	FolderId  string               `json:"folderId"`
-	LibraryId string               `json:"libraryId"`
-	Series    *string              `json:"series,omitempty"`
-	Title     string               `json:"title"`
+	Author  *string              `json:"author,omitempty"`
+	Files   []openapi_types.File `json:"files"`
+	Folder  string               `json:"folder"`
+	Library string               `json:"library"`
+	Series  *string              `json:"series,omitempty"`
+	Title   string               `json:"title"`
 }
 
 // SetItemCoverJSONRequestBody defines body for SetItemCover for application/json ContentType.

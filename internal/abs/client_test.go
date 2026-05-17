@@ -117,11 +117,11 @@ func TestUploadItem_HappyPath(t *testing.T) {
 			t.Fatalf("ParseMultipartForm: %v", err)
 		}
 		seenFields = map[string]string{
-			"libraryId": r.FormValue("libraryId"),
-			"folderId":  r.FormValue("folderId"),
-			"title":     r.FormValue("title"),
-			"author":    r.FormValue("author"),
-			"series":    r.FormValue("series"),
+			"library": r.FormValue("library"),
+			"folder":  r.FormValue("folder"),
+			"title":   r.FormValue("title"),
+			"author":  r.FormValue("author"),
+			"series":  r.FormValue("series"),
 		}
 		if r.MultipartForm != nil {
 			for _, fhs := range r.MultipartForm.File {
@@ -147,7 +147,7 @@ func TestUploadItem_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UploadItem: %v", err)
 	}
-	if seenFields["title"] != "My Book" || seenFields["libraryId"] != "lib1" || seenFields["folderId"] != "f1" {
+	if seenFields["title"] != "My Book" || seenFields["library"] != "lib1" || seenFields["folder"] != "f1" {
 		t.Errorf("wrong form fields: %+v", seenFields)
 	}
 	if seenFields["author"] != "Some Author" {
