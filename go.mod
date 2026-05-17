@@ -1,6 +1,6 @@
 module github.com/astromechza/librofm-to-audiobookshelf
 
-go 1.26.0
+go 1.26
 
 require github.com/oapi-codegen/runtime v1.4.0
 
