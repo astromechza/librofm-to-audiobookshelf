@@ -1,6 +1,9 @@
 package librofm
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Book is the canonical libro.fm audiobook shape. Combines fields seen across
 // /api/v10/library (which includes user_metadata) and
@@ -24,6 +27,33 @@ type Book struct {
 	AudiobookInfo   *AudiobookInfo `json:"audiobook_info,omitempty"`
 	// UserMetadata is populated by /library; absent in audiobook_details.
 	UserMetadata *UserMetadata `json:"user_metadata,omitempty"`
+}
+
+// UnmarshalJSON accepts ISBN as either a JSON string or a JSON number.
+// /api/v10/library returns the field unquoted (a 13-digit number); the
+// older `audiobook_details` shape quotes it. Both should land in the
+// same `string` field.
+func (b *Book) UnmarshalJSON(data []byte) error {
+	// Trick: define an alias that strips this UnmarshalJSON method so the
+	// recursive call uses the default reflection-based decoder.
+	type alias Book
+	aux := struct {
+		ISBN json.RawMessage `json:"isbn"`
+		*alias
+	}{alias: (*alias)(b)}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	switch {
+	case len(aux.ISBN) == 0, string(aux.ISBN) == "null":
+		b.ISBN = ""
+	case aux.ISBN[0] == '"':
+		return json.Unmarshal(aux.ISBN, &b.ISBN)
+	default:
+		// Bare JSON number — preserve the raw digits as a string.
+		b.ISBN = string(aux.ISBN)
+	}
+	return nil
 }
 
 // Genre is the libro.fm category tag. Only the name is interesting for sync.

@@ -128,7 +128,7 @@ func runProbeLibroFm(ctx context.Context, args []string) error {
 
 	books, err := client.Library(ctx)
 	if err != nil {
-		return fmt.Errorf("library: %w", err)
+		return err
 	}
 	fmt.Printf("library: %d books\n", len(books))
 	for _, b := range books {
@@ -307,7 +307,7 @@ func runProbeDownload(ctx context.Context, args []string) error {
 
 	books, err := client.Library(ctx)
 	if err != nil {
-		return fmt.Errorf("library: %w", err)
+		return err
 	}
 	var book librofm.Book
 	for _, b := range books {

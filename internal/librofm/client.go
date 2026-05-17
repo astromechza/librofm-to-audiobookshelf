@@ -189,7 +189,7 @@ func (c *Client) Library(ctx context.Context) ([]Book, error) {
 	for page := 1; ; page++ {
 		var p LibraryPage
 		if err := c.getJSON(ctx, fmt.Sprintf("/api/v10/library?page=%d", page), &p); err != nil {
-			return nil, fmt.Errorf("librofm.Library page %d: %w", page, err)
+			return nil, fmt.Errorf("library page %d: %w", page, err)
 		}
 		all = append(all, p.Audiobooks...)
 		if p.TotalPages <= 0 || page >= p.TotalPages {
@@ -204,11 +204,11 @@ func (c *Client) Library(ctx context.Context) ([]Book, error) {
 // promptly.
 func (c *Client) MP3Manifest(ctx context.Context, isbn string) (DownloadManifest, error) {
 	if isbn == "" {
-		return DownloadManifest{}, errors.New("librofm.MP3Manifest: empty isbn")
+		return DownloadManifest{}, errors.New("mp3 manifest: empty isbn")
 	}
 	var m DownloadManifest
 	if err := c.getJSON(ctx, "/api/v10/download-manifest?isbn="+url.QueryEscape(isbn), &m); err != nil {
-		return DownloadManifest{}, fmt.Errorf("librofm.MP3Manifest: %w", err)
+		return DownloadManifest{}, fmt.Errorf("mp3 manifest: %w", err)
 	}
 	return m, nil
 }
@@ -217,7 +217,7 @@ func (c *Client) MP3Manifest(ctx context.Context, isbn string) (DownloadManifest
 // ErrNoM4B (wrapped) on 404, signalling the caller should fall back to MP3.
 func (c *Client) M4BURL(ctx context.Context, isbn string) (string, error) {
 	if isbn == "" {
-		return "", errors.New("librofm.M4BURL: empty isbn")
+		return "", errors.New("m4b url: empty isbn")
 	}
 	req, err := c.newAuthRequest(ctx, http.MethodGet, "/api/v10/audiobooks/"+url.PathEscape(isbn)+"/packaged_m4b", nil)
 	if err != nil {
@@ -225,24 +225,24 @@ func (c *Client) M4BURL(ctx context.Context, isbn string) (string, error) {
 	}
 	resp, err := c.do(req)
 	if err != nil {
-		return "", fmt.Errorf("librofm.M4BURL: %w", err)
+		return "", fmt.Errorf("m4b url: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return "", fmt.Errorf("librofm.M4BURL %s: %w", isbn, ErrNoM4B)
+		return "", fmt.Errorf("m4b url %s: %w", isbn, ErrNoM4B)
 	}
 	if resp.StatusCode == http.StatusUnauthorized {
 		return "", ErrUnauthorized
 	}
 	if resp.StatusCode/100 != 2 {
-		return "", fmt.Errorf("librofm.M4BURL %s: HTTP %d: %s", isbn, resp.StatusCode, readBodySnippet(resp.Body))
+		return "", fmt.Errorf("m4b url %s: HTTP %d: %s", isbn, resp.StatusCode, readBodySnippet(resp.Body))
 	}
 	var out M4BResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", fmt.Errorf("librofm.M4BURL: decode: %w", err)
+		return "", fmt.Errorf("m4b url: decode: %w", err)
 	}
 	if out.URL == "" {
-		return "", errors.New("librofm.M4BURL: empty m4b_url in response")
+		return "", errors.New("m4b url: empty m4b_url in response")
 	}
 	return out.URL, nil
 }
@@ -252,11 +252,11 @@ func (c *Client) M4BURL(ctx context.Context, isbn string) (string, error) {
 // publication_date.
 func (c *Client) AudiobookDetails(ctx context.Context, isbn string) (Book, error) {
 	if isbn == "" {
-		return Book{}, errors.New("librofm.AudiobookDetails: empty isbn")
+		return Book{}, errors.New("audiobook details: empty isbn")
 	}
 	var out audiobookDetailsResponse
 	if err := c.getJSON(ctx, "/api/v10/explore/audiobook_details/"+url.PathEscape(isbn), &out); err != nil {
-		return Book{}, fmt.Errorf("librofm.AudiobookDetails: %w", err)
+		return Book{}, fmt.Errorf("audiobook details: %w", err)
 	}
 	return out.Data.Audiobook, nil
 }
@@ -270,11 +270,11 @@ func (c *Client) AudiobookDetails(ctx context.Context, isbn string) (Book, error
 func (c *Client) Download(ctx context.Context, fileURL string) (io.ReadCloser, int64, error) {
 	u, err := url.Parse(fileURL)
 	if err != nil {
-		return nil, 0, fmt.Errorf("librofm.Download: parse url: %w", err)
+		return nil, 0, fmt.Errorf("download: parse url: %w", err)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fileURL, nil)
 	if err != nil {
-		return nil, 0, fmt.Errorf("librofm.Download: build request: %w", err)
+		return nil, 0, fmt.Errorf("download: build request: %w", err)
 	}
 	c.applyDefaultHeaders(req)
 	if strings.HasSuffix(u.Hostname(), "libro.fm") && c.token != "" {
@@ -282,12 +282,12 @@ func (c *Client) Download(ctx context.Context, fileURL string) (io.ReadCloser, i
 	}
 	resp, err := c.do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("librofm.Download: %w", err)
+		return nil, 0, fmt.Errorf("download: %w", err)
 	}
 	if resp.StatusCode/100 != 2 {
 		body := readBodySnippet(resp.Body)
 		resp.Body.Close()
-		return nil, 0, fmt.Errorf("librofm.Download %s: HTTP %d: %s", u.Host, resp.StatusCode, body)
+		return nil, 0, fmt.Errorf("download %s: HTTP %d: %s", u.Host, resp.StatusCode, body)
 	}
 	return resp.Body, resp.ContentLength, nil
 }

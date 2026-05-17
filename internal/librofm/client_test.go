@@ -179,6 +179,42 @@ func TestLogin_TokenCacheHit(t *testing.T) {
 	}
 }
 
+func TestLibrary_AcceptsISBNAsNumberOrString(t *testing.T) {
+	t.Parallel()
+	// libro.fm's /api/v10/library returns isbn as a JSON number (no quotes).
+	// /api/v10/explore/audiobook_details/{isbn} sometimes quotes it. Both
+	// should decode into the same string field.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"t"}`))
+	})
+	mux.HandleFunc("/api/v10/library", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"page":1,"total_pages":1,"audiobooks":[
+			{"isbn":9781234567890,"title":"Numeric ISBN","authors":["A"]},
+			{"isbn":"9789876543210","title":"String ISBN","authors":["B"]}
+		]}`))
+	})
+	c, _ := newClient(t, mux)
+	if err := c.Login(context.Background(), "u", "p", false); err != nil {
+		t.Fatal(err)
+	}
+
+	books, err := c.Library(context.Background())
+	if err != nil {
+		t.Fatalf("Library: %v", err)
+	}
+	if len(books) != 2 {
+		t.Fatalf("books len = %d, want 2", len(books))
+	}
+	if books[0].ISBN != "9781234567890" {
+		t.Errorf("books[0].ISBN = %q, want 9781234567890 (decoded from JSON number)", books[0].ISBN)
+	}
+	if books[1].ISBN != "9789876543210" {
+		t.Errorf("books[1].ISBN = %q, want 9789876543210 (decoded from JSON string)", books[1].ISBN)
+	}
+}
+
 func TestLibrary_Pagination(t *testing.T) {
 	t.Parallel()
 	mux := http.NewServeMux()
