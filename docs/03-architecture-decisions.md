@@ -141,7 +141,7 @@ Pinned minimal set. Each justified.
 | -------------------------------------------------- | ----------------------------------------------------- |
 | `github.com/spf13/cobra`                           | CLI scaffolding (optional — could use stdlib `flag`)  |
 | `github.com/bogem/id3v2/v2`                        | ID3v2.4 tag writing for MP3 path                      |
-| `github.com/oapi-codegen/oapi-codegen/v2`          | Build-time only — generates the ABS client from `api/audiobookshelf.openapi.yaml`. Pinned via `tools/tools.go`. |
+| `github.com/oapi-codegen/oapi-codegen/v2`          | Build-time only — generates the ABS client from `api/audiobookshelf.openapi.yaml`. Pinned via the `tool` directive in `go.mod` (Go 1.24+). `go generate` resolves it through `go tool oapi-codegen`. |
 | `github.com/oapi-codegen/runtime`                  | Runtime helpers the generated ABS client links against. |
 | stdlib `archive/zip`                               | Extract MP3 zip parts                                 |
 | stdlib `net/http`                                  | Both libro.fm (hand-written) and ABS (under the generated client) |

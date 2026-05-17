@@ -36,11 +36,9 @@ validated independently before the next is written.
 │   │   └── reconcile_test.go    # table-driven, mock both clients
 │   └── logx/
 │       └── redact.go            # slog handler wrapper that scrubs secrets
-├── tools/
-│   └── tools.go                 # blank-import oapi-codegen to pin its version in go.mod
 ├── scripts/                     # already exists; bash probes
 ├── docs/                        # already exists; this directory
-├── go.mod
+├── go.mod                       # `tool` directive pins oapi-codegen (Go 1.24+)
 └── go.sum
 ```
 
@@ -60,8 +58,12 @@ At build time:
 // internal/abs/generate.go
 package abs
 
-//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen -config ../../api/oapi-codegen.yaml ../../api/audiobookshelf.openapi.yaml
+//go:generate go tool oapi-codegen -config ../../api/oapi-codegen.yaml -o gen.go ../../api/audiobookshelf.openapi.yaml
 ```
+
+The tool itself is pinned via the `tool` directive in `go.mod` (Go 1.24+);
+`go tool oapi-codegen` resolves the version from there. No separate
+`tools/tools.go` blank-import file.
 
 `go generate ./...` produces `internal/abs/gen.go` containing:
 

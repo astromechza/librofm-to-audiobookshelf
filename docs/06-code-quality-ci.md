@@ -10,20 +10,32 @@ User-confirmed choices:
 
 ## Go version policy
 
-| Where                  | Value | Why                                                          |
-| ---------------------- | ----- | ------------------------------------------------------------ |
-| `go.mod` (`go` directive) | **1.25** | Linter constraint (see below). Source code stays back-compatible. |
-| CI `setup-go` / Dockerfile | **1.26** | Production builds use the current stable. |
-| `.golangci.yml` (`run.go`) | **1.25** | Must be ≤ the Go version golangci-lint was built with. |
+**`go.mod` is the single source of truth.** Both CI workflows and the
+release workflow set their toolchain via `go-version-file: go.mod`. There
+is no `GO_VERSION` env var to keep in sync.
 
-**Why `go.mod` is one minor behind the runtime.** `golangci-lint` is itself
-a Go program; v2.12.2 (the current release at the time of writing) was
-built with Go 1.25.10. The linter's bundled `go/types` panics if asked to
-load a module whose `go` directive is newer than 1.25. We keep `go.mod`
-at `go 1.25` (no `toolchain` directive) so the linter is happy; CI's
-`actions/setup-go` provides Go 1.26 for the actual build/test steps,
-which auto-honor the `go 1.25` directive as "any Go ≥ 1.25". Bump
-`go.mod` to `1.26` once a `golangci-lint` release bundles Go 1.26.
+Current pin: **`go 1.26.0`** (patch-pinned for reproducibility). Bump by
+editing `go.mod` only; everything else (CI, release, Dockerfile, linter)
+picks it up.
+
+The `.golangci.yml` `run.go` mirrors the same version for documentation;
+it doesn't drive toolchain selection.
+
+### golangci-lint vs Go 1.26 — temporary state
+
+golangci-lint v2.12.2 (May 2026 latest) is itself built with Go 1.25.10.
+Its embedded `go/types` panics when loading a Go-1.26 module. Until a
+v2.13 release ships built against Go 1.26:
+
+- The `lint` CI job runs with `continue-on-error: true`.
+- It's intentionally excluded from `ci-pass`'s `needs`, so a lint failure
+  doesn't block merges.
+- The action uses `version: latest`, so a v2.13 release will auto-recover
+  the job with no repo change. At that point: drop
+  `continue-on-error: true` and add `lint` back to `ci-pass`'s `needs`.
+
+`make lint` will fail locally for the same reason; `make ci` therefore
+omits it for now. Run lint manually if you want to see what it finds.
 
 ## One tool, many analyzers: golangci-lint
 
@@ -111,32 +123,27 @@ but forgot to regenerate" before merge.
 
 ## Dockerfile strategy
 
-Multi-stage:
+Two Dockerfiles, one purpose each:
 
-```
-FROM golang:1.23-alpine AS build
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -ldflags='-s -w' -trimpath -o /out/librofm-sync ./cmd/librofm-sync
+| File                | Used by                                                | Behaviour                                  |
+| ------------------- | ------------------------------------------------------ | ------------------------------------------ |
+| `Dockerfile`        | CI docker-smoke job, `make docker`, local dev          | Multi-stage: `golang:1.26-alpine` → builds the binary inside the image → COPYs into a distroless/static + nonroot final stage. |
+| `Dockerfile.release`| GoReleaser at release-tag time                         | Single-stage: starts from distroless/static + nonroot, COPYs the binary GoReleaser pre-built on the host. No `go build` here. |
 
-FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/librofm-sync /usr/local/bin/librofm-sync
-USER nonroot:nonroot
-ENTRYPOINT ["/usr/local/bin/librofm-sync"]
-```
+**Why two files.** GoReleaser already cross-compiles the binary on the
+host (so the binary in the GitHub Release archive and the binary in the
+container image are byte-identical). If the release image also ran
+`go build`, we'd have two compilations producing potentially different
+binaries — defeating the point. The build-from-source `Dockerfile` is
+kept for the CI smoke test and local dev, where we want to verify the
+whole pipeline works without needing GoReleaser.
 
-Why these choices:
+Shared properties of the final image (both paths produce the same shape):
+
 - **`CGO_ENABLED=0`**: pure-Go, statically linked, no glibc surprises in distroless.
 - **`distroless/static-debian12:nonroot`**: includes CA root certificates (needed to dial libro.fm and ABS over HTTPS) and a non-root user. No shell, no package manager, ~2 MB base layer.
-- **`-trimpath`**: build paths don't leak into binaries — reproducibility, smaller binaries, no `/home/runner/...` in stack traces.
-- **`-ldflags='-s -w'`**: strip symbol tables and DWARF info — typical ~30% size reduction.
-- **`ARG TARGETOS/TARGETARCH`**: buildx-friendly cross-arch builds.
-
-The same Dockerfile is consumed by both GoReleaser (at release tag) and the CI `docker build` smoke test (on every PR).
+- **`-trimpath`** + **`-ldflags='-s -w'`**: reproducibility + ~30% size reduction.
+- **`ARG TARGETOS/TARGETARCH`** (Dockerfile only): buildx-friendly cross-arch.
 
 ## GoReleaser
 

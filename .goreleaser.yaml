@@ -83,7 +83,7 @@ dockers:
     image_templates:
       - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
     use: buildx
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.release
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{ .Date }}"
@@ -96,7 +96,7 @@ dockers:
     image_templates:
       - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
     use: buildx
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.release
     goarch: arm64
     build_flag_templates:
       - "--platform=linux/arm64"

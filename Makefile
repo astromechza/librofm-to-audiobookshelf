@@ -4,13 +4,16 @@
 # misspell etc. are all bundled inside golangci-lint. We install it once
 # and that single binary covers formatting AND linting (`--fix` rewrites).
 #
+# `oapi-codegen` is NOT installed here — it's declared via the `tool`
+# directive in go.mod (Go 1.24+ feature). `go generate` resolves it
+# automatically through `go tool oapi-codegen`.
+#
 # Separately installed:
+#   golangci-lint — see note above
 #   govulncheck   — CVE scanner, not a style/correctness analyzer
-#   oapi-codegen  — code generator
 #   goreleaser    — release packager
 GOLANGCI_LINT_VERSION ?= v2.12.2
 GOVULNCHECK_VERSION   ?= v1.3.0
-OAPI_CODEGEN_VERSION  ?= v2.4.1
 GORELEASER_VERSION    ?= v2.3.2
 
 GOBIN ?= $(shell go env GOPATH)/bin
@@ -25,13 +28,12 @@ help:
 tools: ## install pinned dev tools into $GOBIN
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 	go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
-	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$(OAPI_CODEGEN_VERSION)
 	go install github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 
 # ---- generation ----------------------------------------------------------
 
 .PHONY: generate
-generate: ## regenerate the ABS client from the OpenAPI spec
+generate: ## regenerate the ABS client from the OpenAPI spec (uses `go tool`)
 	go generate ./...
 
 .PHONY: generate-check
@@ -82,5 +84,6 @@ snapshot: ## local GoReleaser dry-run
 # ---- aggregate -----------------------------------------------------------
 
 .PHONY: ci
-ci: generate-check lint test vuln ## pre-push gate; runs all CI checks locally
-
+ci: generate-check test vuln ## pre-push gate; runs the checks CI gates on
+	## NOTE: `lint` is omitted from `ci` while golangci-lint v2.12.2 panics
+	## on Go 1.26 modules. Run `make lint` manually when you want it.

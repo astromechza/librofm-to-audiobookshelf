@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile:1.7
 #
-# Multi-stage build. Same Dockerfile is used by:
-#   - GoReleaser at release time (cross-arch via TARGETOS/TARGETARCH)
-#   - CI smoke build on every PR (no push)
-#   - Local dev: `make docker`
+# Build-from-source Dockerfile, used by:
+#   - the CI docker-smoke job (build the whole thing from scratch on every PR)
+#   - local dev:  `make docker`
+#
+# Release-time image builds use Dockerfile.release instead — it embeds the
+# pre-built binary GoReleaser produced on the host, so the published image
+# and the GitHub Release archive are byte-identical.
 #
 # Final image is distroless/static + nonroot. Includes CA certs so we can
 # dial libro.fm and audiobookshelf over HTTPS. ~10 MB total.

@@ -1,10 +1,11 @@
 version: "2"
 run:
-  # Targeted Go version. Kept one minor BEHIND go.mod (which is 1.26) so we
-  # don't outrun the golangci-lint binary's own embedded Go toolchain — it
-  # refuses to lint code targeting a version newer than the one it was built
-  # with. Bump when a newer golangci-lint that bundles Go 1.26+ is pinned.
-  go: "1.25"
+  # Targeted Go version, matches go.mod. golangci-lint v2.12.2 (May 2026
+  # latest) is built with Go 1.25.10 and panics when loading a Go-1.26
+  # module — so this job is currently `continue-on-error: true` in CI and
+  # not part of the ci-pass gate. It will start passing again automatically
+  # when golangci-lint ships a v2.13+ release built with Go 1.26.
+  go: "1.26"
   modules-download-mode: readonly
   tests: true
 linters:

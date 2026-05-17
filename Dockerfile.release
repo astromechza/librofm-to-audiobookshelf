@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1.7
+#
+# Release-time Dockerfile, used ONLY by GoReleaser (.goreleaser.yaml).
+#
+# GoReleaser builds the cross-compiled binary on the host and drops it next
+# to this file with the name `librofm-sync`. This Dockerfile just embeds
+# that binary into a distroless/static image — the same binary that ships
+# in the GitHub Release archive. No `go build` in here means no chance of
+# producing a different binary than the one users download.
+#
+# For local builds and the CI docker-smoke job, see ./Dockerfile instead.
+
+FROM gcr.io/distroless/static-debian12:nonroot
+LABEL org.opencontainers.image.source=https://github.com/astromechza/librofm-to-audiobookshelf
+LABEL org.opencontainers.image.description="Sync purchased audiobooks from libro.fm to audiobookshelf"
+LABEL org.opencontainers.image.licenses=MIT
+COPY librofm-sync /usr/local/bin/librofm-sync
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/librofm-sync"]

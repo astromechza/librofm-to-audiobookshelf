@@ -11,4 +11,4 @@
 //   - discover.go  post-upload polling for the new library item
 package abs
 
-//go:generate go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1 -config ../../api/oapi-codegen.yaml -o gen.go ../../api/audiobookshelf.openapi.yaml
+//go:generate go tool oapi-codegen -config ../../api/oapi-codegen.yaml -o gen.go ../../api/audiobookshelf.openapi.yaml
