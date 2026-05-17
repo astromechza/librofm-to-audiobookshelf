@@ -80,12 +80,16 @@ type PdfExtra struct {
 
 // UserMetadata is the per-user info present in /api/v10/library entries.
 // We don't act on most fields in v1 but keep them for future progress sync.
+//
+// Note: libro.fm encodes the numeric fields here as JSON floats (e.g.
+// `"track_seconds": 0.0`) even when the value has no fractional component.
+// Use float64 — Go's decoder rejects a fractional value into an int.
 type UserMetadata struct {
-	Finished     bool   `json:"finished,omitempty"`
-	TrackIndex   int    `json:"track_index,omitempty"`
-	TrackSeconds int    `json:"track_seconds,omitempty"`
-	AddedAt      string `json:"added_at,omitempty"`
-	Hidden       bool   `json:"hidden,omitempty"`
+	Finished     bool    `json:"finished,omitempty"`
+	TrackIndex   float64 `json:"track_index,omitempty"`
+	TrackSeconds float64 `json:"track_seconds,omitempty"`
+	AddedAt      string  `json:"added_at,omitempty"`
+	Hidden       bool    `json:"hidden,omitempty"`
 }
 
 // LibraryPage is one page of /api/v10/library.

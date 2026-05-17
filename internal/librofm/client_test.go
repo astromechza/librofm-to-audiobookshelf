@@ -179,6 +179,47 @@ func TestLogin_TokenCacheHit(t *testing.T) {
 	}
 }
 
+func TestLibrary_AcceptsFloatUserMetadataNumbers(t *testing.T) {
+	t.Parallel()
+	// libro.fm encodes `track_seconds` (and friends) as JSON floats even
+	// when zero, so the original int schema choked on `0.0`. Confirm we
+	// now accept both float and int wire forms.
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"t"}`))
+	})
+	mux.HandleFunc("/api/v10/library", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"page":1,"total_pages":1,"audiobooks":[
+			{"isbn":"111","title":"A","authors":["X"],
+			 "user_metadata":{"track_index":0,"track_seconds":0.0,"finished":false}},
+			{"isbn":"222","title":"B","authors":["Y"],
+			 "user_metadata":{"track_index":3.5,"track_seconds":1234.567,"finished":true}}
+		]}`))
+	})
+	c, _ := newClient(t, mux)
+	if err := c.Login(context.Background(), "u", "p", false); err != nil {
+		t.Fatal(err)
+	}
+
+	books, err := c.Library(context.Background())
+	if err != nil {
+		t.Fatalf("Library: %v", err)
+	}
+	if len(books) != 2 || books[0].UserMetadata == nil || books[1].UserMetadata == nil {
+		t.Fatalf("unexpected: %+v", books)
+	}
+	if books[0].UserMetadata.TrackSeconds != 0 {
+		t.Errorf("books[0].TrackSeconds = %v, want 0", books[0].UserMetadata.TrackSeconds)
+	}
+	if books[1].UserMetadata.TrackSeconds != 1234.567 {
+		t.Errorf("books[1].TrackSeconds = %v, want 1234.567", books[1].UserMetadata.TrackSeconds)
+	}
+	if books[1].UserMetadata.TrackIndex != 3.5 {
+		t.Errorf("books[1].TrackIndex = %v, want 3.5", books[1].UserMetadata.TrackIndex)
+	}
+}
+
 func TestLibrary_AcceptsISBNAsNumberOrString(t *testing.T) {
 	t.Parallel()
 	// libro.fm's /api/v10/library returns isbn as a JSON number (no quotes).
