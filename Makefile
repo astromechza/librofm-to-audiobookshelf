@@ -77,8 +77,14 @@ build: ## build the CLI binary into bin/
 	go build -trimpath -ldflags='-s -w' -o bin/librofm-sync ./cmd/librofm-sync
 
 .PHONY: docker
-docker: ## buildx the multi-arch Docker image (no push)
-	docker buildx build --platform linux/amd64,linux/arm64 -t librofm-sync:dev .
+docker: ## build the Docker image via goreleaser snapshot (single host platform)
+	## Mirrors the CI smoke job: produces the same Dockerfile-driven image
+	## the release tag will publish, without needing to push or tag.
+	$(GOBIN)/goreleaser build --snapshot --single-target --clean
+	@binary=$$(find dist -type f -name librofm-sync | head -1); \
+	  cp "$$binary" librofm-sync; \
+	  docker build -f Dockerfile -t librofm-sync:dev . ; \
+	  rm -f librofm-sync
 
 # ---- release -------------------------------------------------------------
 

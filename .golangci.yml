@@ -40,7 +40,7 @@ linters:
         G101:
           pattern: (?i)(token|secret|password|key|bearer)
     misspell:
-      locale: US
+      locale: UK
     nolintlint:
       require-explanation: true
       require-specific: true

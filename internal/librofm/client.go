@@ -31,8 +31,9 @@ const (
 // Sentinel errors callers may want to match with errors.Is.
 var (
 	// ErrUnauthorized is returned for 401 responses. Trigger: token expired or
-	// rejected. Caller should re-auth and retry once.
-	ErrUnauthorized = errors.New("librofm: unauthorized")
+	// rejected. Caller should re-auth and retry once. The error string keeps
+	// the US spelling to match `http.StatusUnauthorized` / RFC 7235.
+	ErrUnauthorized = errors.New("librofm: unauthorized") //nolint:misspell // RFC-7235 / stdlib alignment
 	// ErrNoM4B is returned by M4BURL when libro.fm has no packaged M4B for
 	// the ISBN (HTTP 404). Caller should fall back to MP3 manifest.
 	ErrNoM4B = errors.New("librofm: no packaged M4B for ISBN")
@@ -186,7 +187,7 @@ func (c *Client) MP3Manifest(ctx context.Context, isbn string) (DownloadManifest
 }
 
 // M4BURL fetches the packaged-M4B download URL for an ISBN. Returns
-// ErrNoM4B (wrapped) on 404, signaling the caller should fall back to MP3.
+// ErrNoM4B (wrapped) on 404, signalling the caller should fall back to MP3.
 func (c *Client) M4BURL(ctx context.Context, isbn string) (string, error) {
 	if isbn == "" {
 		return "", errors.New("librofm.M4BURL: empty isbn")

@@ -45,7 +45,7 @@ archives:
   - id: default
     name_template: >-
       {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ with .Arm }}v{{ . }}{{ end }}
-    formats: [tar.gz]
+    format: tar.gz
     files:
       - LICENSE
       - README.md
@@ -83,7 +83,7 @@ dockers:
     image_templates:
       - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-amd64"
     use: buildx
-    dockerfile: Dockerfile.release
+    dockerfile: Dockerfile
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{ .Date }}"
@@ -96,7 +96,7 @@ dockers:
     image_templates:
       - "ghcr.io/astromechza/librofm-to-audiobookshelf:{{ .Version }}-arm64"
     use: buildx
-    dockerfile: Dockerfile.release
+    dockerfile: Dockerfile
     goarch: arm64
     build_flag_templates:
       - "--platform=linux/arm64"

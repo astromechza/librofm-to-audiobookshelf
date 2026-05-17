@@ -140,27 +140,24 @@ but forgot to regenerate" before merge.
 
 ## Dockerfile strategy
 
-Two Dockerfiles, one purpose each:
+**One Dockerfile.** It expects a pre-built `librofm-sync` binary at the
+build context root and COPYs it into a `distroless/static + nonroot`
+image. No `go build` inside the image — the binary in the GitHub
+Release archive and the binary in the published container image are
+always byte-identical.
 
-| File                | Used by                                                | Behaviour                                  |
-| ------------------- | ------------------------------------------------------ | ------------------------------------------ |
-| `Dockerfile`        | CI docker-smoke job, `make docker`, local dev          | Multi-stage: `golang:1.26-alpine` → builds the binary inside the image → COPYs into a distroless/static + nonroot final stage. |
-| `Dockerfile.release`| GoReleaser at release-tag time                         | Single-stage: starts from distroless/static + nonroot, COPYs the binary GoReleaser pre-built on the host. No `go build` here. |
+Three places stage the binary, all via the same `Dockerfile`:
 
-**Why two files.** GoReleaser already cross-compiles the binary on the
-host (so the binary in the GitHub Release archive and the binary in the
-container image are byte-identical). If the release image also ran
-`go build`, we'd have two compilations producing potentially different
-binaries — defeating the point. The build-from-source `Dockerfile` is
-kept for the CI smoke test and local dev, where we want to verify the
-whole pipeline works without needing GoReleaser.
+| Caller                          | Binary source                                      |
+| ------------------------------- | -------------------------------------------------- |
+| `release` workflow (tag push)   | GoReleaser cross-compiles all platforms, builds + pushes the multi-arch image |
+| `snapshot` CI job (every PR)    | `goreleaser build --snapshot --single-target` produces the host-platform binary; a follow-up `docker build` exercises the same Dockerfile, no push |
+| `make docker` (local dev)       | Same as CI: goreleaser snapshot + local docker build |
 
-Shared properties of the final image (both paths produce the same shape):
+Final-image properties:
 
-- **`CGO_ENABLED=0`**: pure-Go, statically linked, no glibc surprises in distroless.
-- **`distroless/static-debian12:nonroot`**: includes CA root certificates (needed to dial libro.fm and ABS over HTTPS) and a non-root user. No shell, no package manager, ~2 MB base layer.
-- **`-trimpath`** + **`-ldflags='-s -w'`**: reproducibility + ~30% size reduction.
-- **`ARG TARGETOS/TARGETARCH`** (Dockerfile only): buildx-friendly cross-arch.
+- **`distroless/static-debian12:nonroot`**: CA root certificates (for HTTPS to libro.fm and ABS) and a non-root user. No shell, no package manager, ~2 MB base layer.
+- **`CGO_ENABLED=0`** + **`-trimpath`** + **`-ldflags='-s -w'`** (configured in `.goreleaser.yaml`): pure-Go, statically linked, reproducible, ~30% size reduction.
 
 ## GoReleaser
 

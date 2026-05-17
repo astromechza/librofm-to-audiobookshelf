@@ -48,7 +48,7 @@ type UploadItemInput struct {
 
 // UploadItem POSTs to /api/upload using a streamed multipart body. We hand-write
 // this rather than going through the generated client because oapi-codegen's
-// multipart codegen is awkward (it materializes the whole body in memory and
+// multipart codegen is awkward (it materialises the whole body in memory and
 // doesn't model `files[]` cleanly).
 //
 // ABS responds 200 with no body on success. The new library item appears in
@@ -62,7 +62,7 @@ func (c *API) UploadItem(ctx context.Context, in UploadItemInput) error {
 	}
 
 	// Build the multipart body in a pipe so we can stream large audio files
-	// without buffering them in memory. The mw.Close() finalizes the
+	// without buffering them in memory. The mw.Close() finalises the
 	// trailing boundary; the pipe writer is closed afterwards to signal EOF
 	// to the HTTP transport.
 	pr, pw := io.Pipe()
