@@ -160,6 +160,13 @@ the query params; the underlying model exposes ISBN under
    **Annoying consequence:** we don't get the new item's ID back.
    We have to discover it ourselves — see step 2.
 
+1b. **POST `/api/libraries/:id/scan`** — trigger an immediate scan so the
+   freshly-written item is indexed promptly instead of waiting on ABS's
+   filesystem watcher (chokidar), which lags badly on networked/LVM volumes
+   (issue #4). The scan is async (200 immediately, indexes in background) so we
+   still poll in step 2. Requires an admin token; a non-admin 403 is non-fatal —
+   we log a warning and fall back to poll-only discovery.
+
 2. **Poll for the new item** — `GET /api/libraries/:id/search?q=<ISBN>`
    or `GET /api/libraries/:id/items?filter=...`. Retry with backoff
    (the scanner may take 1–10s). Match by the directory path we
@@ -213,7 +220,7 @@ the query params; the underlying model exposes ISBN under
 ### Per-book end-to-end
 
 ```
-upload (1) ─► poll for item id (2) ─► PATCH media (3) ─► POST cover (4)
+upload (1) ─► scan (1b) ─► poll for item id (2) ─► PATCH media (3) ─► POST cover (4)
 ```
 
 If any step fails, the rest abort for that book; the next book proceeds.
@@ -223,7 +230,7 @@ but with bad/missing metadata. We need an idempotency strategy — see
 
 ## Gotchas / pitfalls
 
-1. **Auto-scanner race.** ABS may scan and create the item before we PATCH; or, with `scanner.scheduleScansEnabled` off, may not scan at all. We need explicit polling, not "wait N seconds".
+1. **Auto-scanner race.** ABS may scan and create the item before we PATCH; or, with `scanner.scheduleScansEnabled` off / a lagging watcher, may not scan promptly at all. We trigger an explicit scan after upload (step 1b) **and** poll (step 2) rather than "wait N seconds". The poll budget is configurable (`--discover-timeout`, default 5m) for slow-indexing setups — see issue #4.
 2. **Folder layout matters.** Multi-file MP3 uploads must all land in the *same* directory for ABS to treat them as one book. The upload endpoint enforces this via the `title` field, but be careful if titles are sanitized differently per file.
 3. **PATCH replaces, doesn't merge, on some array fields.** E.g. sending `genres: []` removes all genres. Always send a complete payload.
 4. **Cover URL must be public.** `covers.libro.fm` is, so we're fine. If we ever need to upload from a local path, switch to multipart.

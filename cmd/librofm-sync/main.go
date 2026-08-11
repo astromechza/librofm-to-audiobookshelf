@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/abs"
 	"github.com/astromechza/librofm-to-audiobookshelf/internal/format"
@@ -71,6 +72,18 @@ func run(args []string) error {
 func envFlag(fs *flag.FlagSet, name, env, usage string) *string {
 	val := os.Getenv(env)
 	return fs.String(name, val, fmt.Sprintf("%s (env: %s)", usage, env))
+}
+
+// envDurationFlag binds a *time.Duration flag to an env-var fallback so both
+// `--name 10m` and $NAME=10m work, with the flag taking precedence. An
+// unparseable env value falls back to def (the flag itself still validates).
+func envDurationFlag(fs *flag.FlagSet, name, env string, def time.Duration, usage string) *time.Duration {
+	if v := os.Getenv(env); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			def = d
+		}
+	}
+	return fs.Duration(name, def, fmt.Sprintf("%s (env: %s)", usage, env))
 }
 
 // headerFlag wires a repeatable `--librofm-header KEY=VALUE` into an
@@ -201,6 +214,8 @@ func runSync(ctx context.Context, args []string) error {
 	absToken := envFlag(fs, "abs-token", "ABS_API_TOKEN", "audiobookshelf API token")
 	library := envFlag(fs, "abs-library", "ABS_LIBRARY", "target ABS library name (case-insensitive)")
 	workDir := envFlag(fs, "work-dir", "WORK_DIR", "directory to stage downloads in (default: temp)")
+	discoverTimeout := envDurationFlag(fs, "discover-timeout", "DISCOVER_TIMEOUT", abs.DefaultDiscoverTimeout,
+		"total budget to poll ABS for a freshly-uploaded item before giving up; raise this on slow-indexing setups")
 	dryRun := fs.Bool("dry-run", false, "report what would happen without uploading or patching")
 	limit := fs.Int("limit", 0, "cap the number of libro.fm books considered (0 = no limit)")
 	headers := headerFlag(fs, "librofm-header", "extra HTTP header for libro.fm requests, KEY=VALUE (repeatable). Overrides defaults like X-LibroFm-AppVer.")
@@ -249,11 +264,12 @@ func runSync(ctx context.Context, args []string) error {
 	}
 
 	summary, err := reconcile.Run(ctx, lf, api, reconcile.Options{
-		Library: *library,
-		DryRun:  *dryRun,
-		Limit:   *limit,
-		WorkDir: *workDir,
-		Logger:  logger,
+		Library:         *library,
+		DryRun:          *dryRun,
+		Limit:           *limit,
+		WorkDir:         *workDir,
+		DiscoverTimeout: *discoverTimeout,
+		Logger:          logger,
 	})
 	if err != nil {
 		return err
