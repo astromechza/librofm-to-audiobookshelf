@@ -95,16 +95,34 @@ func (e ListLibraryItemsParamsDesc) Valid() bool {
 
 // Defines values for ListLibraryItemsParamsCollapseseries.
 const (
-	N0 ListLibraryItemsParamsCollapseseries = "0"
-	N1 ListLibraryItemsParamsCollapseseries = "1"
+	ListLibraryItemsParamsCollapseseriesN0 ListLibraryItemsParamsCollapseseries = "0"
+	ListLibraryItemsParamsCollapseseriesN1 ListLibraryItemsParamsCollapseseries = "1"
 )
 
 // Valid indicates whether the value is a known member of the ListLibraryItemsParamsCollapseseries enum.
 func (e ListLibraryItemsParamsCollapseseries) Valid() bool {
 	switch e {
-	case N0:
+	case ListLibraryItemsParamsCollapseseriesN0:
 		return true
-	case N1:
+	case ListLibraryItemsParamsCollapseseriesN1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanLibraryParamsForce.
+const (
+	ScanLibraryParamsForceN0 ScanLibraryParamsForce = "0"
+	ScanLibraryParamsForceN1 ScanLibraryParamsForce = "1"
+)
+
+// Valid indicates whether the value is a known member of the ScanLibraryParamsForce enum.
+func (e ScanLibraryParamsForce) Valid() bool {
+	switch e {
+	case ScanLibraryParamsForceN0:
+		return true
+	case ScanLibraryParamsForceN1:
 		return true
 	default:
 		return false
@@ -361,6 +379,15 @@ type ListLibraryItemsParamsDesc string
 
 // ListLibraryItemsParamsCollapseseries defines parameters for ListLibraryItems.
 type ListLibraryItemsParamsCollapseseries string
+
+// ScanLibraryParams defines parameters for ScanLibrary.
+type ScanLibraryParams struct {
+	// Force `1` forces a rescan of already-indexed items too.
+	Force *ScanLibraryParamsForce `form:"force,omitempty" json:"force,omitempty"`
+}
+
+// ScanLibraryParamsForce defines parameters for ScanLibrary.
+type ScanLibraryParamsForce string
 
 // SearchLibraryParams defines parameters for SearchLibrary.
 type SearchLibraryParams struct {
@@ -2303,6 +2330,9 @@ type ClientInterface interface {
 	// ListLibraryItems request
 	ListLibraryItems(ctx context.Context, libraryId LibraryId, params *ListLibraryItemsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ScanLibrary request
+	ScanLibrary(ctx context.Context, libraryId LibraryId, params *ScanLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// SearchLibrary request
 	SearchLibrary(ctx context.Context, libraryId LibraryId, params *SearchLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -2375,6 +2405,18 @@ func (c *Client) ListLibraries(ctx context.Context, reqEditors ...RequestEditorF
 
 func (c *Client) ListLibraryItems(ctx context.Context, libraryId LibraryId, params *ListLibraryItemsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListLibraryItemsRequest(c.Server, libraryId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ScanLibrary(ctx context.Context, libraryId LibraryId, params *ScanLibraryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewScanLibraryRequest(c.Server, libraryId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -2687,6 +2729,67 @@ func NewListLibraryItemsRequest(server string, libraryId LibraryId, params *List
 	return req, nil
 }
 
+// NewScanLibraryRequest generates requests for ScanLibrary
+func NewScanLibraryRequest(server string, libraryId LibraryId, params *ScanLibraryParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "libraryId", libraryId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/libraries/%s/scan", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Force != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "force", *params.Force, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSearchLibraryRequest generates requests for SearchLibrary
 func NewSearchLibraryRequest(server string, libraryId LibraryId, params *SearchLibraryParams) (*http.Request, error) {
 	var err error
@@ -2871,6 +2974,9 @@ type ClientWithResponsesInterface interface {
 	// ListLibraryItemsWithResponse request
 	ListLibraryItemsWithResponse(ctx context.Context, libraryId LibraryId, params *ListLibraryItemsParams, reqEditors ...RequestEditorFn) (*ListLibraryItemsResponse, error)
 
+	// ScanLibraryWithResponse request
+	ScanLibraryWithResponse(ctx context.Context, libraryId LibraryId, params *ScanLibraryParams, reqEditors ...RequestEditorFn) (*ScanLibraryResponse, error)
+
 	// SearchLibraryWithResponse request
 	SearchLibraryWithResponse(ctx context.Context, libraryId LibraryId, params *SearchLibraryParams, reqEditors ...RequestEditorFn) (*SearchLibraryResponse, error)
 
@@ -2995,6 +3101,35 @@ func (r ListLibraryItemsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListLibraryItemsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ScanLibraryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r ScanLibraryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ScanLibraryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ScanLibraryResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -3142,6 +3277,15 @@ func (c *ClientWithResponses) ListLibraryItemsWithResponse(ctx context.Context, 
 	return ParseListLibraryItemsResponse(rsp)
 }
 
+// ScanLibraryWithResponse request returning *ScanLibraryResponse
+func (c *ClientWithResponses) ScanLibraryWithResponse(ctx context.Context, libraryId LibraryId, params *ScanLibraryParams, reqEditors ...RequestEditorFn) (*ScanLibraryResponse, error) {
+	rsp, err := c.ScanLibrary(ctx, libraryId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseScanLibraryResponse(rsp)
+}
+
 // SearchLibraryWithResponse request returning *SearchLibraryResponse
 func (c *ClientWithResponses) SearchLibraryWithResponse(ctx context.Context, libraryId LibraryId, params *SearchLibraryParams, reqEditors ...RequestEditorFn) (*SearchLibraryResponse, error) {
 	rsp, err := c.SearchLibrary(ctx, libraryId, params, reqEditors...)
@@ -3268,6 +3412,22 @@ func ParseListLibraryItemsResponse(rsp *http.Response) (*ListLibraryItemsRespons
 		}
 		response.JSON200 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseScanLibraryResponse parses an HTTP response from a ScanLibraryWithResponse call
+func ParseScanLibraryResponse(rsp *http.Response) (*ScanLibraryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ScanLibraryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil

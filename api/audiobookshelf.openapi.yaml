@@ -156,6 +156,35 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SearchResponse' }
 
+  /api/libraries/{libraryId}/scan:
+    post:
+      tags: [ingest]
+      operationId: scanLibrary
+      summary: Trigger a filesystem scan of a library
+      description: |
+        Forces ABS to scan the library folders immediately rather than waiting
+        on the filesystem watcher (chokidar), which can lag badly on networked
+        or LVM-backed volumes. We fire this after POST /api/upload so a freshly
+        written item is indexed promptly and becomes discoverable via /search.
+
+        The scan runs asynchronously: ABS returns 200 right away and indexes in
+        the background, so callers must still poll /search for the new item.
+        Requires an admin API token; a non-admin token returns 403 (which we
+        treat as non-fatal and fall back to poll-only discovery).
+      parameters:
+        - $ref: '#/components/parameters/LibraryId'
+        - in: query
+          name: force
+          schema: { type: string, enum: ['0', '1'] }
+          description: '`1` forces a rescan of already-indexed items too.'
+      responses:
+        '200':
+          description: Scan started (no response body)
+        '403':
+          description: Token lacks admin privilege required to trigger a scan
+        '404':
+          description: Library not found
+
   /api/upload:
     post:
       tags: [ingest]

@@ -55,6 +55,11 @@ type Options struct {
 	// Defaults to a fresh dir under os.TempDir() if empty.
 	WorkDir string
 
+	// DiscoverTimeout is the total polling budget for post-upload item
+	// discovery. Zero uses abs.DefaultDiscoverTimeout. Bump this on slow
+	// installs where ABS indexes uploads well past the default (issue #4).
+	DiscoverTimeout time.Duration
+
 	// Logger receives per-book progress at info/warn/error levels.
 	// Defaults to slog.Default().
 	Logger *slog.Logger
@@ -216,11 +221,20 @@ func syncOne(ctx context.Context, lf *librofm.Client, api *abs.API, opts Options
 	}); err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
+
+	// Kick an explicit library scan so the item is indexed promptly rather
+	// than waiting on ABS's filesystem watcher, which can lag past the poll
+	// budget on networked/LVM volumes (issue #4). Non-fatal: a non-admin
+	// token 403s here, in which case we fall back to poll-only discovery.
+	if err := api.TriggerScan(ctx, libraryID); err != nil {
+		log.Warn("scan trigger failed (non-fatal); falling back to poll-only", "err", err)
+	}
 	log.Info("upload accepted; polling for new item")
 
 	item, err := api.Discover(ctx, abs.DiscoverInput{
 		LibraryID: libraryID,
 		Title:     uploadTitle,
+		Timeout:   opts.DiscoverTimeout,
 	})
 	if err != nil {
 		return fmt.Errorf("discover: %w", err)
@@ -328,8 +342,3 @@ func safeID(item abs.LibraryItem) string {
 	}
 	return item.Id
 }
-
-// time import retained for future per-book deadline. Marked here so the
-// `unused` linter doesn't trip if Go's compiler-time DCE is too eager —
-// the reference goes away when we add per-book context timeouts.
-var _ = time.Second

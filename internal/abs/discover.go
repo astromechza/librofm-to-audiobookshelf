@@ -27,19 +27,50 @@ type DiscoverInput struct {
 	// unsafe characters (like ":"), so we use a normalised compare instead
 	// of strict equality.
 	Title string
+	// Timeout is the total wall-clock budget for polling. When Backoffs is
+	// nil, an exponential-ish schedule (1s, 2s, 4s, ... capped at 30s) is
+	// generated to fill exactly this budget. Zero means DefaultDiscoverTimeout.
+	//
+	// Slow ABS installs (networked/LVM volumes where the chokidar watcher lags
+	// well past a minute) need a larger budget so the post-upload ISBN PATCH
+	// isn't skipped — see issue #4.
+	Timeout time.Duration
 	// Backoffs is the sleep sequence between polls, e.g. {1s, 2s, 4s, 8s, 16s}.
-	// Default is one fixed retry sequence baked in below.
+	// When set it overrides Timeout (used by tests). When nil the schedule is
+	// derived from Timeout via buildBackoffs.
 	Backoffs []time.Duration
 }
 
-var defaultBackoffs = []time.Duration{
-	1 * time.Second,
-	2 * time.Second,
-	4 * time.Second,
-	8 * time.Second,
-	16 * time.Second,
-	30 * time.Second,
-	30 * time.Second,
+// DefaultDiscoverTimeout is the polling budget used when DiscoverInput.Timeout
+// is zero. Raised from the original ~91s to cover slow-indexing setups by
+// default (issue #4); tune per-deployment via --discover-timeout.
+const DefaultDiscoverTimeout = 5 * time.Minute
+
+// buildBackoffs derives a poll schedule that sums to exactly total. Delays
+// grow 1s → 2s → 4s → ... capped at 30s; the final delay is trimmed so the
+// cumulative sleep matches the budget rather than overshooting it.
+func buildBackoffs(total time.Duration) []time.Duration {
+	if total <= 0 {
+		total = DefaultDiscoverTimeout
+	}
+	const cap = 30 * time.Second
+	var out []time.Duration
+	var sum time.Duration
+	next := 1 * time.Second
+	for sum < total {
+		d := next
+		if remaining := total - sum; d > remaining {
+			d = remaining
+		}
+		out = append(out, d)
+		sum += d
+		if next < cap {
+			if next *= 2; next > cap {
+				next = cap
+			}
+		}
+	}
+	return out
 }
 
 // Discover polls /api/libraries/{id}/search with exponential-ish backoff until
@@ -55,7 +86,7 @@ func (c *API) Discover(ctx context.Context, in DiscoverInput) (LibraryItem, erro
 	}
 	backoffs := in.Backoffs
 	if backoffs == nil {
-		backoffs = defaultBackoffs
+		backoffs = buildBackoffs(in.Timeout)
 	}
 
 	for i, delay := range backoffs {

@@ -23,6 +23,11 @@ type callCounters struct {
 	uploads atomic.Int32
 	patches atomic.Int32
 	covers  atomic.Int32
+	scans   atomic.Int32
+	// scanStatus overrides the HTTP status returned by the scan endpoint.
+	// Zero means 200. Set before calling reconcile.Run to simulate e.g. a
+	// non-admin 403.
+	scanStatus atomic.Int32
 }
 
 // fixtures sets up a libro.fm client + an ABS API + counters, all backed by
@@ -68,6 +73,14 @@ func fixtures(t *testing.T, libroBooks []librofm.Book, absLibraryItems []map[str
 	mux.HandleFunc("/api/upload", func(w http.ResponseWriter, _ *http.Request) {
 		counters.uploads.Add(1)
 		w.WriteHeader(200)
+	})
+	mux.HandleFunc("/api/libraries/lib-1/scan", func(w http.ResponseWriter, _ *http.Request) {
+		counters.scans.Add(1)
+		status := int(counters.scanStatus.Load())
+		if status == 0 {
+			status = 200
+		}
+		w.WriteHeader(status)
 	})
 	mux.HandleFunc("/api/libraries/lib-1/search", func(w http.ResponseWriter, r *http.Request) {
 		// Echo the queried title back as a freshly-created LibraryItem.
@@ -164,6 +177,35 @@ func TestRun_NotPresentTriggersFullSync(t *testing.T) {
 	if counters.uploads.Load() != 1 || counters.patches.Load() != 1 {
 		t.Errorf("calls: uploads=%d patches=%d covers=%d (want 1/1/?)",
 			counters.uploads.Load(), counters.patches.Load(), counters.covers.Load())
+	}
+	// The full-sync path triggers an explicit library scan after upload so a
+	// slow filesystem watcher doesn't strand the item past the poll window.
+	if counters.scans.Load() != 1 {
+		t.Errorf("scans = %d, want 1", counters.scans.Load())
+	}
+}
+
+// TestRun_ScanFailureIsNonFatal proves a scan trigger that 403s (non-admin
+// token) doesn't fail the sync: discovery still polls and the ISBN PATCH still
+// lands.
+func TestRun_ScanFailureIsNonFatal(t *testing.T) {
+	t.Parallel()
+	books := []librofm.Book{{ISBN: "111", Title: "Alpha", Authors: []string{"Author A"}}}
+	lf, api, counters, opts := fixtures(t, books, []map[string]any{}, "Audiobooks")
+	counters.scanStatus.Store(http.StatusForbidden)
+
+	summary, err := reconcile.Run(context.Background(), lf, api, opts)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if summary.Synced != 1 || summary.Failed != 0 {
+		t.Errorf("summary = %+v", summary)
+	}
+	if counters.scans.Load() != 1 {
+		t.Errorf("scans = %d, want 1 (scan still attempted)", counters.scans.Load())
+	}
+	if counters.patches.Load() != 1 {
+		t.Errorf("patches = %d, want 1 (PATCH must still run despite scan 403)", counters.patches.Load())
 	}
 }
 

@@ -304,6 +304,85 @@ func TestDiscover_TolerantMatch(t *testing.T) {
 	}
 }
 
+func TestDiscover_TimeoutBuildsSchedule(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	calls := 0
+	mux.HandleFunc("/api/libraries/lib1/search", func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"book":[]}`))
+	})
+	api := newTestAPI(t, mux)
+
+	// A tiny Timeout (no explicit Backoffs) must derive a short schedule and
+	// give up quickly with ErrNotFound rather than hanging on the default.
+	start := time.Now()
+	_, err := api.Discover(context.Background(), abs.DiscoverInput{
+		LibraryID: "lib1", Title: "absent",
+		Timeout: 3 * time.Millisecond,
+	})
+	if !errors.Is(err, abs.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if calls == 0 {
+		t.Error("expected at least one poll")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Discover took %s; Timeout budget was ignored", elapsed)
+	}
+}
+
+func TestTriggerScan(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	var got struct {
+		path   string
+		method string
+	}
+	mux.HandleFunc("/api/libraries/lib1/scan", func(w http.ResponseWriter, r *http.Request) {
+		assertAuth(t, r)
+		got.path, got.method = r.URL.Path, r.Method
+		w.WriteHeader(200)
+	})
+	api := newTestAPI(t, mux)
+
+	if err := api.TriggerScan(context.Background(), "lib1"); err != nil {
+		t.Fatalf("TriggerScan: %v", err)
+	}
+	if got.method != http.MethodPost {
+		t.Errorf("method = %q, want POST", got.method)
+	}
+	if got.path != "/api/libraries/lib1/scan" {
+		t.Errorf("path = %q", got.path)
+	}
+}
+
+func TestTriggerScan_NonAdmin403(t *testing.T) {
+	t.Parallel()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/libraries/lib1/scan", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	})
+	api := newTestAPI(t, mux)
+
+	err := api.TriggerScan(context.Background(), "lib1")
+	if err == nil {
+		t.Fatal("expected error on 403, got nil")
+	}
+	if !strings.Contains(err.Error(), "403") {
+		t.Errorf("err = %v, want it to mention 403", err)
+	}
+}
+
+func TestTriggerScan_Validation(t *testing.T) {
+	t.Parallel()
+	api := newTestAPI(t, http.NewServeMux())
+	if err := api.TriggerScan(context.Background(), ""); err == nil {
+		t.Fatal("expected error for empty libraryID")
+	}
+}
+
 func TestDiscover_NotFound(t *testing.T) {
 	t.Parallel()
 	mux := http.NewServeMux()
