@@ -27,9 +27,13 @@ type DiscoverInput struct {
 	// unsafe characters (like ":"), so we use a normalised compare instead
 	// of strict equality.
 	Title string
-	// Timeout is the total wall-clock budget for polling. When Backoffs is
-	// nil, an exponential-ish schedule (1s, 2s, 4s, ... capped at 30s) is
-	// generated to fill exactly this budget. Zero means DefaultDiscoverTimeout.
+	// Timeout is the total backoff budget for polling: the sum of the sleeps
+	// between polls. When Backoffs is nil, an exponential-ish schedule (1s, 2s,
+	// 4s, ... capped at 30s) is generated to fill exactly this budget. Zero
+	// means DefaultDiscoverTimeout. Actual wall-clock runtime is slightly
+	// longer, since each poll's request/processing time is not counted against
+	// the budget — the drift is in the safe direction (we wait a little more,
+	// never less).
 	//
 	// Slow ABS installs (networked/LVM volumes where the chokidar watcher lags
 	// well past a minute) need a larger budget so the post-upload ISBN PATCH
@@ -53,7 +57,7 @@ func buildBackoffs(total time.Duration) []time.Duration {
 	if total <= 0 {
 		total = DefaultDiscoverTimeout
 	}
-	const cap = 30 * time.Second
+	const maxDelay = 30 * time.Second
 	var out []time.Duration
 	var sum time.Duration
 	next := 1 * time.Second
@@ -64,9 +68,9 @@ func buildBackoffs(total time.Duration) []time.Duration {
 		}
 		out = append(out, d)
 		sum += d
-		if next < cap {
-			if next *= 2; next > cap {
-				next = cap
+		if next < maxDelay {
+			if next *= 2; next > maxDelay {
+				next = maxDelay
 			}
 		}
 	}

@@ -22,7 +22,7 @@ func (c *API) TriggerScan(ctx context.Context, libraryID string) error {
 	}
 	resp, err := c.ScanLibraryWithResponse(ctx, libraryID, &ScanLibraryParams{})
 	if err != nil {
-		return err
+		return fmt.Errorf("abs.TriggerScan: %w", err)
 	}
 	if resp.StatusCode() != 200 {
 		return fmt.Errorf("abs.TriggerScan: HTTP %d", resp.StatusCode())
