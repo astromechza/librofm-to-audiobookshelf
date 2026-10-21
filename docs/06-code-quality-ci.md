@@ -44,7 +44,7 @@ version already in `$PATH`):
 
 ```bash
 GOTOOLCHAIN=local go install golang.org/x/vuln/cmd/govulncheck@v1.3.0
-GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+GOTOOLCHAIN=local go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 ```
 
 This is wired up in both the CI workflow (per `env:` block on the

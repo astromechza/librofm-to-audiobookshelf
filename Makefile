@@ -12,7 +12,7 @@
 #   golangci-lint — see note above
 #   govulncheck   — CVE scanner, not a style/correctness analyzer
 #   goreleaser    — release packager
-GOLANGCI_LINT_VERSION ?= v2.12.2
+GOLANGCI_LINT_VERSION ?= v2.15.0
 GOVULNCHECK_VERSION   ?= v1.3.0
 GORELEASER_VERSION    ?= v2.10.2
 

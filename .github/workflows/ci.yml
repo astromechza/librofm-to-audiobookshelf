@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GOLANGCI_LINT_VERSION: "v2.12.2"
+  GOLANGCI_LINT_VERSION: "v2.15.0"
   GOVULNCHECK_VERSION: "v1.3.0"
   GORELEASER_VERSION: "v2.10.2"
   # Pin Redocly to a specific minor — upstream releases can otherwise break CI
