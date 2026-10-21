@@ -14,7 +14,7 @@ User-confirmed choices:
 release workflow set their toolchain via `go-version-file: go.mod`. There
 is no `GO_VERSION` env var to keep in sync.
 
-Current pin: **`go 1.26.0`** (patch-pinned for reproducibility). Bump by
+Current pin: **`go 1.27.3`** (patch-pinned for reproducibility). Bump by
 editing `go.mod` only; everything else (CI, release, Dockerfile, linter)
 picks it up.
 
