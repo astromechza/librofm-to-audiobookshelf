@@ -1,11 +1,9 @@
 version: "2"
 run:
-  # Targeted Go version, matches go.mod. golangci-lint v2.12.2 (May 2026
-  # latest) is built with Go 1.25.10 and panics when loading a Go-1.26
-  # module — so this job is currently `continue-on-error: true` in CI and
-  # not part of the ci-pass gate. It will start passing again automatically
-  # when golangci-lint ships a v2.13+ release built with Go 1.26.
-  go: "1.26"
+  # Targeted Go version, matches go.mod. CI installs golangci-lint with
+  # GOTOOLCHAIN=local so the binary is built with the go.mod toolchain and
+  # can load this module.
+  go: "1.27"
   modules-download-mode: readonly
   tests: true
 linters:

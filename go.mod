@@ -1,6 +1,6 @@
 module github.com/astromechza/librofm-to-audiobookshelf
 
-go 1.26
+go 1.27.3
 
 require (
 	github.com/bogem/id3v2/v2 v2.1.4
